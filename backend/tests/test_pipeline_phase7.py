@@ -17,6 +17,14 @@ def valid_payload() -> dict:
         "analysis_time_window": {"type": "relative", "value": "12_months"},
         "included_topics": ["recommendations", "music discovery", "personalization"],
         "excluded_topics": ["pricing", "billing", "podcasts"],
+        "research_questions": [
+            "Why do users struggle to discover new music?",
+            "What are the most common frustrations with recommendations?",
+            "What listening behaviors are users trying to achieve?",
+            "What causes repetitive listening?",
+            "Which user segments experience different discovery challenges?",
+            "What unmet needs emerge consistently?",
+        ],
         "success_criteria": [
             "Improve meaningful music discovery",
             "Reduce repetitive listening",
@@ -110,6 +118,7 @@ def test_analyze_feedback_builds_multiple_clusters_and_preserves_mixed_signals(m
     assert response.status_code == 200
     body = response.json()
     assert body["metrics"]["cluster_count"] >= 2
-    assert len(body["feedback_clusters"]) >= 2
-    assert any(cluster["dominant_signal"] == "pain" for cluster in body["feedback_clusters"])
-    assert any(cluster["mixed_signal_flag"] for cluster in body["feedback_clusters"])
+    clusters = body["compact_gpt_payload"]["top_clusters"]
+    assert len(clusters) >= 2
+    assert any(cluster["dominant_signal"] == "pain" for cluster in clusters)
+    assert any(cluster["mixed_signal_flag"] for cluster in clusters)

@@ -50,9 +50,9 @@ class AnalyzeFeedbackRequest(BaseModel):
     research_scope: str = Field(..., min_length=1)
     research_goal: str = Field(..., min_length=1)
     analysis_time_window: AnalysisTimeWindow
-    included_topics: list[str] = Field(default_factory=list)
-    excluded_topics: list[str] = Field(default_factory=list)
-    research_questions: list[str] = Field(default_factory=list)
+    included_topics: list[str] = Field(..., min_length=1)
+    excluded_topics: list[str] = Field(..., min_length=1)
+    research_questions: list[str] = Field(..., min_length=1)
     success_criteria: list[str] = Field(..., min_length=1)
     max_runtime_seconds: int = Field(default=120, ge=1, le=600)
     debug: bool = False
@@ -64,8 +64,6 @@ class AnalyzeFeedbackRequest(BaseModel):
                 "This implementation is currently fixed to Spotify. Set product to 'Spotify'."
             )
         self.product = "Spotify"
-        if not self.research_questions:
-            self.research_questions = DEFAULT_SPOTIFY_RESEARCH_QUESTIONS.copy()
         return self
 
 

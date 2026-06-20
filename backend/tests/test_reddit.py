@@ -39,6 +39,10 @@ def _request() -> AnalyzeFeedbackRequest:
         analysis_time_window={"type": "relative", "value": "12_months"},
         included_topics=["recommendations", "Discover Weekly"],
         excluded_topics=["pricing"],
+        research_questions=[
+            "Why do users struggle to discover new music?",
+            "What are the most common frustrations with recommendations?",
+        ],
         success_criteria=[
             "Improve meaningful music discovery",
             "Reduce repetitive listening",
@@ -54,8 +58,8 @@ def test_build_reddit_query_seeds_includes_spec_queries() -> None:
 
     assert "Spotify recommendations repetitive" in queries
     assert "Spotify Discover Weekly repetitive" in queries
-    assert "Spotify Discover Weekly" in queries
-    assert len(queries) <= 5
+    assert "Spotify smart shuffle repetitive" in queries
+    assert len(queries) <= 4
 
 
 def test_build_reddit_aggregate_query_stays_query_driven() -> None:
@@ -209,3 +213,29 @@ def test_collect_reddit_feedback_stops_early_after_consecutive_rate_limits() -> 
     assert records == []
     assert len(seen_urls) == 2
     assert any("stopped early after repeated rate limits" in warning for warning in warnings)
+
+
+def test_collect_reddit_feedback_stops_early_when_runtime_budget_is_exhausted() -> None:
+    seen_urls: list[str] = []
+
+    def _budget_fetcher(url: str):
+        seen_urls.append(url)
+        return ATOM_FEED, {"content-type": "application/atom+xml"}
+
+    records, warnings = collect_reddit_feedback_with_warnings(
+        [
+            "Spotify recommendations repetitive",
+            "Spotify Discover Weekly repetitive",
+            "Spotify algorithm recommendations",
+        ],
+        fetcher=_budget_fetcher,
+        query_delay_seconds=5.0,
+        max_retries=0,
+        backoff_seconds=0.0,
+        max_total_seconds=0.0,
+        sleep_fn=lambda _: None,
+    )
+
+    assert len(records) == 0
+    assert len(seen_urls) == 0
+    assert any("runtime budget" in warning for warning in warnings)

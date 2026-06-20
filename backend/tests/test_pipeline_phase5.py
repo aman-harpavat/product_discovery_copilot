@@ -17,6 +17,14 @@ def valid_payload() -> dict:
         "analysis_time_window": {"type": "relative", "value": "12_months"},
         "included_topics": ["recommendations", "music discovery", "personalization"],
         "excluded_topics": ["pricing", "billing", "podcasts"],
+        "research_questions": [
+            "Why do users struggle to discover new music?",
+            "What are the most common frustrations with recommendations?",
+            "What listening behaviors are users trying to achieve?",
+            "What causes repetitive listening?",
+            "Which user segments experience different discovery challenges?",
+            "What unmet needs emerge consistently?",
+        ],
         "success_criteria": [
             "Improve meaningful music discovery",
             "Reduce repetitive listening",
@@ -101,8 +109,10 @@ def test_analyze_feedback_applies_cleaning_and_relevance(monkeypatch) -> None:
     assert body["source_summary"][0]["records_relevant"] == 0
     assert body["source_summary"][1]["records_relevant"] == 1
     assert body["source_summary"][2]["records_relevant"] == 1
-    assert any("fb_" in note for note in body["processing_notes"])
+    assert any("Phase 5 applies cleaning" in note for note in body["processing_notes"])
+    quotes = body["compact_gpt_payload"]["representative_quotes"]
+    assert len(quotes) >= 1
     assert any(
-        phrase in body["representative_quotes"][0]["text"].lower()
+        phrase in quotes[0]["text"].lower()
         for phrase in ["repeating", "repetitive", "same artists"]
     )

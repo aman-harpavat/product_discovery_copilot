@@ -17,6 +17,14 @@ def valid_payload() -> dict:
         "analysis_time_window": {"type": "relative", "value": "12_months"},
         "included_topics": ["recommendations", "music discovery", "personalization"],
         "excluded_topics": ["pricing", "billing", "podcasts"],
+        "research_questions": [
+            "Why do users struggle to discover new music?",
+            "What are the most common frustrations with recommendations?",
+            "What listening behaviors are users trying to achieve?",
+            "What causes repetitive listening?",
+            "Which user segments experience different discovery challenges?",
+            "What unmet needs emerge consistently?",
+        ],
         "success_criteria": [
             "Improve meaningful music discovery",
             "Reduce repetitive listening",
@@ -97,4 +105,4 @@ def test_analyze_feedback_applies_deduplication(monkeypatch) -> None:
     assert body["metrics"]["near_duplicates_removed"] == 1
     assert body["processing_summary"]["near_duplicates_removed"] == 1
     assert body["metrics"]["cluster_count"] >= 1
-    assert any("removed_near_duplicate" in note for note in body["processing_notes"])
+    assert any("Near duplicates are collapsed" in note for note in body["processing_notes"])

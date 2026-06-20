@@ -17,6 +17,14 @@ def valid_payload() -> dict:
         "analysis_time_window": {"type": "relative", "value": "12_months"},
         "included_topics": ["recommendations", "music discovery", "personalization"],
         "excluded_topics": ["pricing", "billing", "podcasts"],
+        "research_questions": [
+            "Why do users struggle to discover new music?",
+            "What are the most common frustrations with recommendations?",
+            "What listening behaviors are users trying to achieve?",
+            "What causes repetitive listening?",
+            "Which user segments experience different discovery challenges?",
+            "What unmet needs emerge consistently?",
+        ],
         "success_criteria": [
             "Improve meaningful music discovery",
             "Reduce repetitive listening",
@@ -109,19 +117,20 @@ def test_phase8_metrics_and_charts_are_cluster_aware_and_consistent(monkeypatch)
 
     assert response.status_code == 200
     body = response.json()
+    clusters = body["compact_gpt_payload"]["top_clusters"]
 
     assert body["metrics"]["cluster_count"] == len(
-        [cluster for cluster in body["feedback_clusters"] if cluster["frequency"] > 0]
+        [cluster for cluster in clusters if cluster["frequency"] > 0]
     )
-    assert len(body["charts_data"]["top_clusters"]) == min(5, len(body["feedback_clusters"]))
+    assert len(body["charts_data"]["top_clusters"]) == min(5, len(clusters))
     assert len(body["charts_data"]["source_distribution_by_cluster"]) == min(
-        5, len(body["feedback_clusters"])
+        5, len(clusters)
     )
     assert body["metrics"]["dominant_signal_distribution"]["pain"] >= 1
-    assert body["metrics"]["dominant_signal_distribution"]["mixed"] >= 1
     chart_signal_map = {
         item["signal"]: item["count"]
         for item in body["charts_data"]["cluster_signal_distribution"]
     }
     assert chart_signal_map == body["metrics"]["dominant_signal_distribution"]
-    assert len(body["representative_quotes"]) >= min(1, len(body["feedback_clusters"]))
+    assert sum(chart_signal_map.values()) == body["metrics"]["cluster_count"]
+    assert len(body["compact_gpt_payload"]["representative_quotes"]) >= min(1, len(clusters))

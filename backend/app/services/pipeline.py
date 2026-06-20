@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor, TimeoutError
 from copy import deepcopy
 import logging
 import math
@@ -69,8 +69,21 @@ logger = logging.getLogger(__name__)
 
 def collect_reddit_feedback(
     queries: list[str],
+    *,
+    limit: int,
+    query_delay_seconds: float,
+    max_retries: int,
+    backoff_seconds: float,
+    max_total_seconds: float,
 ) -> tuple[list[RawFeedbackItem], list[str]]:
-    return collect_reddit_feedback_with_warnings(queries)
+    return collect_reddit_feedback_with_warnings(
+        queries,
+        limit=limit,
+        query_delay_seconds=query_delay_seconds,
+        max_retries=max_retries,
+        backoff_seconds=backoff_seconds,
+        max_total_seconds=max_total_seconds,
+    )
 
 
 def build_mock_analysis_response(
@@ -79,8 +92,10 @@ def build_mock_analysis_response(
     """Build a compact Action-safe response plus file-backed artifacts."""
     run_id = make_run_id()
     run_started_at = perf_counter()
-    reddit_queries = build_reddit_query_seeds(request)
     collection_plan = _build_collection_plan(request)
+    reddit_queries = build_reddit_query_seeds(request)[
+        : int(collection_plan["reddit_query_count"])
+    ]
     logger.info(
         "analyze_feedback started run_id=%s product=%s scope=%s goal=%s reddit_queries=%s collection_plan=%s",
         run_id,
@@ -580,9 +595,24 @@ def _collect_google_play_feedback(
         return [], [warning]
 
 
-def _collect_reddit_feedback(queries: list[str]) -> tuple[list[RawFeedbackItem], list[str]]:
+def _collect_reddit_feedback(
+    queries: list[str],
+    *,
+    collection_plan: dict[str, int | float | bool],
+) -> tuple[list[RawFeedbackItem], list[str]]:
     try:
-        result = collect_reddit_feedback(queries)
+        try:
+            result = collect_reddit_feedback(
+                queries,
+                limit=int(collection_plan["reddit_result_limit"]),
+                query_delay_seconds=float(collection_plan["reddit_query_delay_seconds"]),
+                max_retries=int(collection_plan["reddit_max_retries"]),
+                backoff_seconds=float(collection_plan["reddit_backoff_seconds"]),
+                max_total_seconds=float(collection_plan["reddit_max_total_seconds"]),
+            )
+        except TypeError:
+            # Backward compatibility for tests or shims that monkeypatch the older single-arg signature.
+            result = collect_reddit_feedback(queries)
         if isinstance(result, tuple):
             return result
         return result, []
@@ -623,28 +653,45 @@ def _collect_all_sources(
     list[str],
 ]:
     collection_started_at = perf_counter()
-    with ThreadPoolExecutor(max_workers=3) as executor:
-        google_play_future = executor.submit(
-            _collect_google_play_feedback,
-            review_cap=int(collection_plan["google_play_review_cap"]),
+    executor = ThreadPoolExecutor(max_workers=3)
+    google_play_future = executor.submit(
+        _collect_google_play_feedback,
+        review_cap=int(collection_plan["google_play_review_cap"]),
+    )
+    reddit_future = (
+        executor.submit(
+            _collect_reddit_feedback,
+            reddit_queries,
+            collection_plan=collection_plan,
         )
-        reddit_future = (
-            executor.submit(_collect_reddit_feedback, reddit_queries)
-            if include_reddit
-            else None
-        )
-        app_store_future = executor.submit(
-            _collect_app_store_feedback,
-            review_cap=int(collection_plan["app_store_review_cap"]),
-            max_pages=int(collection_plan["app_store_max_pages"]),
-        )
+        if include_reddit
+        else None
+    )
+    app_store_future = executor.submit(
+        _collect_app_store_feedback,
+        review_cap=int(collection_plan["app_store_review_cap"]),
+        max_pages=int(collection_plan["app_store_max_pages"]),
+    )
 
-        google_play_feedback, google_play_warnings = google_play_future.result()
-        if reddit_future is not None:
-            reddit_feedback, reddit_warnings = reddit_future.result()
-        else:
-            reddit_feedback, reddit_warnings = [], []
-        app_store_feedback, app_store_warnings = app_store_future.result()
+    google_play_feedback, google_play_warnings = _await_collection_future(
+        future=google_play_future,
+        source_name="Google Play",
+        timeout_seconds=float(collection_plan["google_play_timeout_seconds"]),
+    )
+    if reddit_future is not None:
+        reddit_feedback, reddit_warnings = _await_collection_future(
+            future=reddit_future,
+            source_name="Reddit",
+            timeout_seconds=float(collection_plan["reddit_timeout_seconds"]),
+        )
+    else:
+        reddit_feedback, reddit_warnings = [], []
+    app_store_feedback, app_store_warnings = _await_collection_future(
+        future=app_store_future,
+        source_name="App Store",
+        timeout_seconds=float(collection_plan["app_store_timeout_seconds"]),
+    )
+    executor.shutdown(wait=False, cancel_futures=True)
 
     logger.info(
         "collection completed elapsed_seconds=%.2f google_play=%s reddit=%s app_store=%s",
@@ -663,7 +710,30 @@ def _collect_all_sources(
     )
 
 
-def _call_google_play_collector(review_cap: int) -> list[RawFeedbackItem]:
+def _await_collection_future(
+    *,
+    future: Future[tuple[list[RawFeedbackItem], list[str]]],
+    source_name: str,
+    timeout_seconds: float,
+) -> tuple[list[RawFeedbackItem], list[str]]:
+    try:
+        return future.result(timeout=timeout_seconds)
+    except TimeoutError:
+        warning = (
+            f"{source_name} collection timed out after {timeout_seconds:.0f}s; "
+            "continuing with partial results from the other sources."
+        )
+        logger.warning(
+            "%s collection_timeout timeout_seconds=%.2f",
+            source_name.lower().replace(" ", "_"),
+            timeout_seconds,
+        )
+        return [], [warning]
+
+
+def _call_google_play_collector(
+    review_cap: int,
+) -> list[RawFeedbackItem]:
     try:
         return collect_google_play_reviews(
             app_id=DEFAULT_GOOGLE_PLAY_APP_ID,
@@ -689,7 +759,9 @@ def _call_app_store_collector(
         return collect_app_store_reviews(DEFAULT_APP_STORE_APP_ID)
 
 
-def _build_collection_plan(request: AnalyzeFeedbackRequest) -> dict[str, int | bool]:
+def _build_collection_plan(
+    request: AnalyzeFeedbackRequest,
+) -> dict[str, int | float | bool]:
     fast_mode = request.max_runtime_seconds <= 120
     google_play_review_cap = (
         settings.fast_mode_google_play_reviews
@@ -701,13 +773,66 @@ def _build_collection_plan(request: AnalyzeFeedbackRequest) -> dict[str, int | b
         if fast_mode
         else settings.full_mode_app_store_reviews
     )
-    app_store_max_pages = max(1, math.ceil(app_store_review_cap / 50))
+    google_play_timeout_seconds = (
+        settings.fast_mode_google_play_timeout_seconds
+        if fast_mode
+        else settings.full_mode_google_play_timeout_seconds
+    )
+    app_store_timeout_seconds = (
+        settings.fast_mode_app_store_timeout_seconds
+        if fast_mode
+        else settings.full_mode_app_store_timeout_seconds
+    )
+    reddit_result_limit = (
+        settings.fast_mode_reddit_result_limit
+        if fast_mode
+        else settings.full_mode_reddit_result_limit
+    )
+    reddit_query_delay_seconds = (
+        settings.fast_mode_reddit_query_delay_seconds
+        if fast_mode
+        else settings.reddit_query_delay_seconds
+    )
+    reddit_max_retries = (
+        settings.fast_mode_reddit_max_retries
+        if fast_mode
+        else settings.reddit_max_retries
+    )
+    reddit_backoff_seconds = (
+        settings.fast_mode_reddit_backoff_seconds
+        if fast_mode
+        else settings.reddit_backoff_seconds
+    )
+    reddit_max_total_seconds = (
+        settings.fast_mode_reddit_max_total_seconds
+        if fast_mode
+        else settings.full_mode_reddit_max_total_seconds
+    )
+    app_store_max_pages = (
+        settings.fast_mode_app_store_max_pages
+        if fast_mode
+        else settings.full_mode_app_store_max_pages
+    )
+    app_store_review_cap = min(app_store_review_cap, app_store_max_pages * 50)
 
     return {
         "fast_mode": fast_mode,
         "google_play_review_cap": google_play_review_cap,
         "app_store_review_cap": app_store_review_cap,
         "app_store_max_pages": app_store_max_pages,
+        "google_play_timeout_seconds": google_play_timeout_seconds,
+        "app_store_timeout_seconds": app_store_timeout_seconds,
+        "reddit_query_count": (
+            settings.fast_mode_reddit_max_queries
+            if fast_mode
+            else settings.reddit_max_queries_per_run
+        ),
+        "reddit_result_limit": reddit_result_limit,
+        "reddit_query_delay_seconds": reddit_query_delay_seconds,
+        "reddit_max_retries": reddit_max_retries,
+        "reddit_backoff_seconds": reddit_backoff_seconds,
+        "reddit_timeout_seconds": reddit_max_total_seconds + 5.0,
+        "reddit_max_total_seconds": reddit_max_total_seconds,
     }
 
 

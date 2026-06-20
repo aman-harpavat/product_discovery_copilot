@@ -46,14 +46,15 @@ User
 ### 1.3 Runtime Flow
 1. User asks the Custom GPT to analyze Spotify's music discovery experience.
 2. Custom GPT collects and confirms the required brief fields.
-3. Custom GPT calls `POST /analyze-feedback` only after the brief is locked.
-4. Backend validates the request and creates a `run_id`.
-5. Backend generates source queries from product, scope, goal, included topics, and excluded topics.
-6. Backend collects feedback from Reddit, Google Play, and App Store.
-7. Backend normalizes all records into one raw feedback schema.
-8. Backend runs cleaning, relevance filtering, deduplication, clustering, quote selection, metrics generation, and chart-data generation.
-9. Backend returns structured evidence plus warnings, processing notes, diagnostics, and artifact URLs.
-10. Custom GPT uses only backend evidence for quantitative claims, then returns the final Markdown report directly in chat as a downloadable Markdown output.
+3. If any required brief field is missing or ambiguous, Custom GPT continues a clarification loop with the user until the full brief is locked.
+4. Custom GPT calls `POST /analyze-feedback` only after the brief is locked.
+5. Backend validates the request and creates a `run_id`.
+6. Backend generates source queries from product, scope, goal, included topics, and excluded topics.
+7. Backend collects feedback from Reddit, Google Play, and App Store.
+8. Backend normalizes all records into one raw feedback schema.
+9. Backend runs cleaning, relevance filtering, deduplication, clustering, quote selection, metrics generation, and chart-data generation.
+10. Backend returns structured evidence plus warnings, processing notes, diagnostics, and artifact URLs.
+11. Custom GPT uses only backend evidence for quantitative claims, then returns the final Markdown report directly in chat as a downloadable Markdown output.
 
 ### 1.4 Architectural Boundaries
 

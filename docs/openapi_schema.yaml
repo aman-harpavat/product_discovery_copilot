@@ -244,6 +244,7 @@
               "type": "string"
             },
             "type": "array",
+            "minItems": 1,
             "title": "Included Topics"
           },
           "excluded_topics": {
@@ -251,6 +252,7 @@
               "type": "string"
             },
             "type": "array",
+            "minItems": 1,
             "title": "Excluded Topics"
           },
           "research_questions": {
@@ -258,6 +260,7 @@
               "type": "string"
             },
             "type": "array",
+            "minItems": 1,
             "title": "Research Questions"
           },
           "success_criteria": {
@@ -287,6 +290,9 @@
           "research_scope",
           "research_goal",
           "analysis_time_window",
+          "included_topics",
+          "excluded_topics",
+          "research_questions",
           "success_criteria"
         ],
         "title": "AnalyzeFeedbackRequest"

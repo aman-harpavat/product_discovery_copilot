@@ -30,6 +30,12 @@ The GPT must lock all of these before calling the backend:
 - `research_questions`
 - `success_criteria`
 
+If any required field is missing, ambiguous, or empty:
+- do not call the backend
+- ask the user for the missing detail
+- update the locked brief
+- continue until the full brief is complete
+
 ## Success criteria rule
 Success criteria are PM reasoning owned by the GPT.
 
@@ -45,6 +51,7 @@ For Spotify music discovery, likely inferred criteria may include:
 - Improve recommendation relevance and novelty balance
 
 But the GPT must ask for confirmation before calling the backend.
+The GPT must not pass incomplete or partially inferred success criteria to the backend.
 
 ## Evidence flow
 1. Call `POST /analyze-feedback`

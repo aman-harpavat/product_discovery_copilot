@@ -38,6 +38,9 @@ REQUIRED BRIEF FIELDS
 Do not call backend until all fields are locked.
 Do not do manual evidence analysis before calling the backend.
 If the user asks for an analysis and the brief is locked, you must call the backend.
+If any required brief field is missing, ambiguous, or empty, do not call the backend yet.
+Instead, Agent 0 must ask the user specifically for the missing field(s), update the locked brief, and continue this clarification loop until all required fields are present.
+Only then may Agent 0 call `POST /analyze-feedback`.
 
 SUCCESS CRITERIA
 
@@ -52,6 +55,7 @@ Infer likely success criteria from:
 Ask user for confirmation before locking them.
 
 Do not let backend infer success criteria.
+Do not infer missing required fields and silently pass incomplete requests to the backend.
 
 ACTION RULE
 
@@ -71,6 +75,8 @@ Use it as soon as these are locked:
 * excluded_topics
 * research_questions
 * success_criteria
+
+If even one of these fields is missing, keep prompting the user until it is supplied or explicitly confirmed.
 
 After POST /analyze-feedback returns:
 
@@ -177,7 +183,7 @@ FINAL OUTPUT
 The final report should be generated in Markdown format.
 Write the report using markdown headings and bullets that match the section order above.
 Return the final report directly in chat as Markdown.
-When possible, use a Markdown/code-file style response so the user can download the report from the chat UI itself.
+Return it in a downloadable Markdown file/code-file style within the chat itself so the user can download the `.md` report directly from the chat UI.
 Do not save the final report back into the backend artifact folder.
 
 EVIDENCE RULES

@@ -18,6 +18,14 @@ def valid_payload() -> dict:
             "personalization",
         ],
         "excluded_topics": ["pricing", "billing", "podcasts"],
+        "research_questions": [
+            "Why do users struggle to discover new music?",
+            "What are the most common frustrations with recommendations?",
+            "What listening behaviors are users trying to achieve?",
+            "What causes repetitive listening?",
+            "Which user segments experience different discovery challenges?",
+            "What unmet needs emerge consistently?",
+        ],
         "success_criteria": [
             "Improve meaningful music discovery",
             "Reduce repetitive listening",
@@ -76,7 +84,7 @@ def test_analyze_feedback_rejects_malformed_time_window() -> None:
     assert body["error_type"] == "validation_error"
 
 
-def test_analyze_feedback_warns_when_topic_lists_are_empty(monkeypatch) -> None:
+def test_analyze_feedback_rejects_empty_topic_lists(monkeypatch) -> None:
     from app.services import pipeline
 
     monkeypatch.setattr(pipeline, "collect_google_play_reviews", lambda app_id: [])
@@ -88,10 +96,9 @@ def test_analyze_feedback_warns_when_topic_lists_are_empty(monkeypatch) -> None:
 
     response = client.post("/analyze-feedback", json=payload)
 
-    assert response.status_code == 200
+    assert response.status_code == 422
     body = response.json()
-    assert len(body["warnings"]) >= 3
-    assert any("Runtime-aware source caps were applied" in warning for warning in body["warnings"])
+    assert body["status"] == "error"
 
 
 def test_analyze_feedback_rejects_non_spotify_product() -> None:
@@ -138,3 +145,51 @@ def test_analyze_feedback_rejects_missing_success_criteria(monkeypatch) -> None:
     assert response.status_code == 422
     body = response.json()
     assert "success_criteria" in body["missing_fields"]
+
+
+def test_analyze_feedback_rejects_missing_research_questions(monkeypatch) -> None:
+    from app.services import pipeline
+
+    monkeypatch.setattr(pipeline, "collect_google_play_reviews", lambda app_id: [])
+    monkeypatch.setattr(pipeline, "collect_reddit_feedback", lambda queries: [])
+    monkeypatch.setattr(pipeline, "collect_app_store_reviews", lambda app_id: [])
+    payload = valid_payload()
+    del payload["research_questions"]
+
+    response = client.post("/analyze-feedback", json=payload)
+
+    assert response.status_code == 422
+    body = response.json()
+    assert "research_questions" in body["missing_fields"]
+
+
+def test_analyze_feedback_rejects_missing_included_topics(monkeypatch) -> None:
+    from app.services import pipeline
+
+    monkeypatch.setattr(pipeline, "collect_google_play_reviews", lambda app_id: [])
+    monkeypatch.setattr(pipeline, "collect_reddit_feedback", lambda queries: [])
+    monkeypatch.setattr(pipeline, "collect_app_store_reviews", lambda app_id: [])
+    payload = valid_payload()
+    del payload["included_topics"]
+
+    response = client.post("/analyze-feedback", json=payload)
+
+    assert response.status_code == 422
+    body = response.json()
+    assert "included_topics" in body["missing_fields"]
+
+
+def test_analyze_feedback_rejects_missing_excluded_topics(monkeypatch) -> None:
+    from app.services import pipeline
+
+    monkeypatch.setattr(pipeline, "collect_google_play_reviews", lambda app_id: [])
+    monkeypatch.setattr(pipeline, "collect_reddit_feedback", lambda queries: [])
+    monkeypatch.setattr(pipeline, "collect_app_store_reviews", lambda app_id: [])
+    payload = valid_payload()
+    del payload["excluded_topics"]
+
+    response = client.post("/analyze-feedback", json=payload)
+
+    assert response.status_code == 422
+    body = response.json()
+    assert "excluded_topics" in body["missing_fields"]

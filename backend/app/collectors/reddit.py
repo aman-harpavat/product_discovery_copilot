@@ -6,6 +6,7 @@ from html.parser import HTMLParser
 import json
 import logging
 from pathlib import Path
+from time import perf_counter
 from time import sleep
 from typing import Any, Callable, Optional, Tuple
 from urllib.parse import quote_plus, urlparse
@@ -207,6 +208,7 @@ def collect_reddit_feedback_with_warnings(
     query_delay_seconds: float = DEFAULT_REDDIT_QUERY_DELAY_SECONDS,
     max_retries: int = DEFAULT_REDDIT_MAX_RETRIES,
     backoff_seconds: float = DEFAULT_REDDIT_BACKOFF_SECONDS,
+    max_total_seconds: float | None = None,
     sleep_fn: SleepFn = sleep,
 ) -> tuple[list[RawFeedbackItem], list[str]]:
     active_fetcher = fetcher or _default_fetcher
@@ -215,6 +217,7 @@ def collect_reddit_feedback_with_warnings(
     seen_feedback_ids: set[str] = set()
     warnings: list[str] = []
     consecutive_rate_limits = 0
+    started_at = perf_counter()
 
     query_list = queries or [build_reddit_aggregate_query([])]
     logger.info(
@@ -223,6 +226,16 @@ def collect_reddit_feedback_with_warnings(
         limit,
     )
     for index, query in enumerate(query_list):
+        if _time_budget_exhausted(started_at, max_total_seconds):
+            warnings.append(
+                "Reddit collection stopped early after hitting the configured runtime budget; partial Reddit depth was preserved."
+            )
+            logger.warning(
+                "reddit early_stop runtime_budget_exhausted elapsed_seconds=%.2f budget_seconds=%.2f",
+                perf_counter() - started_at,
+                max_total_seconds or 0.0,
+            )
+            break
         url = build_reddit_search_url(query)
         payload_text = None
         headers: dict[str, str] = {}
@@ -264,6 +277,24 @@ def collect_reddit_feedback_with_warnings(
                     if _is_rate_limited(exc):
                         if attempt < max_retries:
                             backoff_delay = backoff_seconds * (2**attempt)
+                            if _time_budget_exhausted(
+                                started_at,
+                                max_total_seconds,
+                                additional_seconds=backoff_delay,
+                            ):
+                                warnings.append(
+                                    "Reddit collection stopped early to stay within the runtime budget after rate limiting; partial Reddit depth was preserved."
+                                )
+                                logger.warning(
+                                    "reddit early_stop backoff_would_exceed_budget index=%s/%s attempt=%s backoff_seconds=%.2f",
+                                    index + 1,
+                                    len(query_list),
+                                    attempt + 1,
+                                    backoff_delay,
+                                )
+                                payload_text = None
+                                consecutive_rate_limits += 1
+                                break
                             logger.info(
                                 "reddit query_rate_limited index=%s/%s attempt=%s backoff_seconds=%.2f",
                                 index + 1,
@@ -347,6 +378,21 @@ def collect_reddit_feedback_with_warnings(
             len(feedback_items),
         )
         if index < len(query_list) - 1:
+            if _time_budget_exhausted(
+                started_at,
+                max_total_seconds,
+                additional_seconds=query_delay_seconds,
+            ):
+                warnings.append(
+                    "Reddit collection stopped before the next query to stay within the runtime budget; partial Reddit depth was preserved."
+                )
+                logger.warning(
+                    "reddit early_stop query_delay_would_exceed_budget index=%s/%s delay_seconds=%.2f",
+                    index + 1,
+                    len(query_list),
+                    query_delay_seconds,
+                )
+                break
             sleep_fn(query_delay_seconds)
 
     logger.info(
@@ -355,6 +401,17 @@ def collect_reddit_feedback_with_warnings(
         len(warnings),
     )
     return feedback_items, warnings
+
+
+def _time_budget_exhausted(
+    started_at: float,
+    max_total_seconds: float | None,
+    *,
+    additional_seconds: float = 0.0,
+) -> bool:
+    if max_total_seconds is None:
+        return False
+    return (perf_counter() - started_at + additional_seconds) >= max_total_seconds
 
 
 def collect_reddit_feedback(
