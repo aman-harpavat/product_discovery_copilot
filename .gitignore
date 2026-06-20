@@ -1,0 +1,10 @@
+.DS_Store
+.venv/
+.venv39/
+.pycache_tmp/
+__pycache__/
+.pytest_cache/
+
+backend/data/runs/
+backend/cache/
+backend/logs/

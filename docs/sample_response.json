@@ -1,0 +1,440 @@
+{
+  "run_id": "run_e8582f6c",
+  "status": "completed",
+  "locked_brief": {
+    "product": "Spotify",
+    "research_scope": "Music Discovery",
+    "research_goal": "Opportunity Discovery",
+    "analysis_time_window": {
+      "type": "relative",
+      "value": "12_months"
+    },
+    "included_topics": [
+      "recommendations",
+      "music discovery",
+      "personalization"
+    ],
+    "excluded_topics": [
+      "pricing",
+      "billing",
+      "podcasts"
+    ],
+    "max_runtime_seconds": 120,
+    "debug": true
+  },
+  "source_summary": [
+    {
+      "source_name": "Reddit",
+      "source_type": "discussion",
+      "queries_used": [
+        "Spotify recommendations repetitive",
+        "Spotify Discover Weekly repetitive",
+        "Spotify recommendations",
+        "Spotify music discovery"
+      ],
+      "records_collected": 1,
+      "records_relevant": 1,
+      "date_range": {
+        "start": "2026-02-02",
+        "end": "2026-02-02"
+      },
+      "notes": "Reddit collection is active in Phase 3 using multiple public RSS search queries derived from the locked brief. Phase 5 applies cleaning and scope relevance filtering. 1 relevant records currently contribute across 1 clusters."
+    },
+    {
+      "source_name": "Google Play",
+      "source_type": "review",
+      "queries_used": [
+        "Spotify"
+      ],
+      "records_collected": 2,
+      "records_relevant": 2,
+      "date_range": {
+        "start": "2026-02-01",
+        "end": "2026-02-01"
+      },
+      "notes": "Google Play collection is active in Phase 2 with continuation-based paging up to a source cap. Phase 5 applies cleaning and scope relevance filtering before records count as relevant. 2 relevant records currently contribute across 2 clusters."
+    },
+    {
+      "source_name": "App Store",
+      "source_type": "review",
+      "queries_used": [
+        "Spotify"
+      ],
+      "records_collected": 2,
+      "records_relevant": 2,
+      "date_range": {
+        "start": "2026-02-10",
+        "end": "2026-02-11"
+      },
+      "notes": "App Store collection is active in Phase 4 using paginated public customer reviews RSS pages up to a source cap. Phase 5 applies cleaning and scope relevance filtering. 2 relevant records currently contribute across 2 clusters."
+    }
+  ],
+  "processing_summary": {
+    "records_collected": 5,
+    "records_after_cleaning": 5,
+    "records_relevant": 5,
+    "records_after_deduplication": 5,
+    "exact_duplicates_removed": 0,
+    "normalized_duplicates_removed": 0,
+    "near_duplicates_removed": 0,
+    "source_failures": [],
+    "source_warning_codes": {}
+  },
+  "feedback_clusters": [
+    {
+      "cluster_id": "cluster_001",
+      "cluster_name": "Helps works well",
+      "cluster_summary": "Users frequently validate what works well in helps, helps new, while offering lighter improvement signals.",
+      "frequency": 2,
+      "dominant_signal": "positive",
+      "pain_point_evidence_count": 0,
+      "positive_validation_count": 1,
+      "request_signal_count": 2,
+      "mixed_signal_flag": false,
+      "source_distribution": {
+        "reddit": 1,
+        "google_play": 0,
+        "app_store": 1
+      },
+      "time_distribution": {
+        "2026-02": 2
+      },
+      "representative_quotes": [
+        {
+          "text": "Release Radar helps me find new music Still would like more control over recommendations.",
+          "source": "reddit",
+          "url": "https://www.reddit.com/r/spotify/comments/rd_1/test/",
+          "date": "2026-02-02T00:00:00+00:00"
+        },
+        {
+          "text": "Discover Weekly still helps me find new music The recommendations are useful for artist discovery.",
+          "source": "app_store",
+          "url": "https://itunes.apple.com/us/review?id=324684580&reviewId=1001",
+          "date": "2026-02-10T19:00:00Z"
+        }
+      ],
+      "example_feedback_ids": [
+        "fb_reddit_t3_rd_1",
+        "fb_app_store_1001"
+      ],
+      "keywords": [
+        "helps",
+        "helps new",
+        "new"
+      ],
+      "relevance_score": 1.0
+    },
+    {
+      "cluster_id": "cluster_002",
+      "cluster_name": "Weekly Repeats frustrations",
+      "cluster_summary": "Users repeatedly describe pain points related to weekly repeats, weekly, including dissatisfaction, missing control, or repetitive discovery behavior.",
+      "frequency": 1,
+      "dominant_signal": "pain",
+      "pain_point_evidence_count": 1,
+      "positive_validation_count": 0,
+      "request_signal_count": 3,
+      "mixed_signal_flag": false,
+      "source_distribution": {
+        "reddit": 0,
+        "google_play": 1,
+        "app_store": 0
+      },
+      "time_distribution": {
+        "2026-02": 1
+      },
+      "representative_quotes": [
+        {
+          "text": "Discover Weekly repeats the same songs and needs more variety.",
+          "source": "google_play",
+          "url": "https://play.google.com/store/apps/details?id=com.spotify.music&showAllReviews=true",
+          "date": "2026-02-01T12:05:00Z"
+        }
+      ],
+      "example_feedback_ids": [
+        "fb_google_play_gp_2"
+      ],
+      "keywords": [
+        "weekly repeats",
+        "weekly",
+        "variety"
+      ],
+      "relevance_score": 1.0
+    },
+    {
+      "cluster_id": "cluster_003",
+      "cluster_name": "Recommendations mixed signals",
+      "cluster_summary": "Users discuss recommendations, wish recommendations with mixed evidence, combining positive validation and dissatisfaction that should temper later opportunity weighting.",
+      "frequency": 1,
+      "dominant_signal": "mixed",
+      "pain_point_evidence_count": 0,
+      "positive_validation_count": 0,
+      "request_signal_count": 4,
+      "mixed_signal_flag": true,
+      "source_distribution": {
+        "reddit": 0,
+        "google_play": 0,
+        "app_store": 1
+      },
+      "time_distribution": {
+        "2026-02": 1
+      },
+      "representative_quotes": [
+        {
+          "text": "I love Spotify but recommendations need more control The app is great, but I wish recommendations had more variety.",
+          "source": "app_store",
+          "url": "https://itunes.apple.com/us/review?id=324684580&reviewId=1002",
+          "date": "2026-02-11T19:00:00Z"
+        }
+      ],
+      "example_feedback_ids": [
+        "fb_app_store_1002"
+      ],
+      "keywords": [
+        "recommendations",
+        "wish recommendations",
+        "control"
+      ],
+      "relevance_score": 1.0
+    },
+    {
+      "cluster_id": "cluster_004",
+      "cluster_name": "Weekly frustrations",
+      "cluster_summary": "Users repeatedly describe pain points related to weekly, recommending, including dissatisfaction, missing control, or repetitive discovery behavior.",
+      "frequency": 1,
+      "dominant_signal": "pain",
+      "pain_point_evidence_count": 1,
+      "positive_validation_count": 0,
+      "request_signal_count": 0,
+      "mixed_signal_flag": false,
+      "source_distribution": {
+        "reddit": 0,
+        "google_play": 1,
+        "app_store": 0
+      },
+      "time_distribution": {
+        "2026-02": 1
+      },
+      "representative_quotes": [
+        {
+          "text": "Spotify keeps recommending the same artists in Discover Weekly.",
+          "source": "google_play",
+          "url": "https://play.google.com/store/apps/details?id=com.spotify.music&showAllReviews=true",
+          "date": "2026-02-01T12:00:00Z"
+        }
+      ],
+      "example_feedback_ids": [
+        "fb_google_play_gp_1"
+      ],
+      "keywords": [
+        "weekly",
+        "recommending",
+        "keeps recommending"
+      ],
+      "relevance_score": 1.0
+    }
+  ],
+  "metrics": {
+    "total_records_collected": 5,
+    "records_after_cleaning": 5,
+    "records_relevant": 5,
+    "records_after_deduplication": 5,
+    "exact_duplicates_removed": 0,
+    "normalized_duplicates_removed": 0,
+    "near_duplicates_removed": 0,
+    "cluster_count": 4,
+    "dominant_signal_distribution": {
+      "pain": 2,
+      "positive": 1,
+      "mixed": 1
+    },
+    "source_distribution": {
+      "reddit": 1,
+      "google_play": 2,
+      "app_store": 2
+    },
+    "rating_distribution": {
+      "1": 0,
+      "2": 2,
+      "3": 0,
+      "4": 1,
+      "5": 1
+    },
+    "top_clusters": [
+      {
+        "cluster_id": "cluster_001",
+        "cluster_name": "Helps works well",
+        "frequency": 2
+      },
+      {
+        "cluster_id": "cluster_002",
+        "cluster_name": "Weekly Repeats frustrations",
+        "frequency": 1
+      },
+      {
+        "cluster_id": "cluster_003",
+        "cluster_name": "Recommendations mixed signals",
+        "frequency": 1
+      },
+      {
+        "cluster_id": "cluster_004",
+        "cluster_name": "Weekly frustrations",
+        "frequency": 1
+      }
+    ]
+  },
+  "charts_data": {
+    "feedback_by_source": [
+      {
+        "source": "reddit",
+        "count": 1
+      },
+      {
+        "source": "google_play",
+        "count": 2
+      },
+      {
+        "source": "app_store",
+        "count": 2
+      }
+    ],
+    "feedback_over_time": [
+      {
+        "month": "2026-02",
+        "count": 5
+      }
+    ],
+    "top_clusters": [
+      {
+        "cluster_name": "Helps works well",
+        "frequency": 2
+      },
+      {
+        "cluster_name": "Weekly Repeats frustrations",
+        "frequency": 1
+      },
+      {
+        "cluster_name": "Recommendations mixed signals",
+        "frequency": 1
+      },
+      {
+        "cluster_name": "Weekly frustrations",
+        "frequency": 1
+      }
+    ],
+    "rating_distribution": [
+      {
+        "rating": "1",
+        "count": 0
+      },
+      {
+        "rating": "2",
+        "count": 2
+      },
+      {
+        "rating": "3",
+        "count": 0
+      },
+      {
+        "rating": "4",
+        "count": 1
+      },
+      {
+        "rating": "5",
+        "count": 1
+      }
+    ],
+    "source_distribution_by_cluster": [
+      {
+        "cluster_name": "Helps works well",
+        "reddit": 1,
+        "google_play": 0,
+        "app_store": 1
+      },
+      {
+        "cluster_name": "Weekly Repeats frustrations",
+        "reddit": 0,
+        "google_play": 1,
+        "app_store": 0
+      },
+      {
+        "cluster_name": "Recommendations mixed signals",
+        "reddit": 0,
+        "google_play": 0,
+        "app_store": 1
+      },
+      {
+        "cluster_name": "Weekly frustrations",
+        "reddit": 0,
+        "google_play": 1,
+        "app_store": 0
+      }
+    ],
+    "cluster_signal_distribution": [
+      {
+        "signal": "pain",
+        "count": 2
+      },
+      {
+        "signal": "positive",
+        "count": 1
+      },
+      {
+        "signal": "mixed",
+        "count": 1
+      }
+    ]
+  },
+  "representative_quotes": [
+    {
+      "text": "Release Radar helps me find new music Still would like more control over recommendations.",
+      "source": "reddit",
+      "url": "https://www.reddit.com/r/spotify/comments/rd_1/test/",
+      "date": "2026-02-02T00:00:00+00:00"
+    },
+    {
+      "text": "Discover Weekly repeats the same songs and needs more variety.",
+      "source": "google_play",
+      "url": "https://play.google.com/store/apps/details?id=com.spotify.music&showAllReviews=true",
+      "date": "2026-02-01T12:05:00Z"
+    },
+    {
+      "text": "I love Spotify but recommendations need more control The app is great, but I wish recommendations had more variety.",
+      "source": "app_store",
+      "url": "https://itunes.apple.com/us/review?id=324684580&reviewId=1002",
+      "date": "2026-02-11T19:00:00Z"
+    },
+    {
+      "text": "Spotify keeps recommending the same artists in Discover Weekly.",
+      "source": "google_play",
+      "url": "https://play.google.com/store/apps/details?id=com.spotify.music&showAllReviews=true",
+      "date": "2026-02-01T12:00:00Z"
+    },
+    {
+      "text": "Discover Weekly still helps me find new music The recommendations are useful for artist discovery.",
+      "source": "app_store",
+      "url": "https://itunes.apple.com/us/review?id=324684580&reviewId=1001",
+      "date": "2026-02-10T19:00:00Z"
+    }
+  ],
+  "processing_notes": [
+    "Google Play collection is active in Phase 2.",
+    "Reddit collection is active in Phase 3 using multiple public RSS search queries derived from the locked brief.",
+    "App Store collection is active in Phase 4 using paginated public customer reviews RSS pages.",
+    "Phase 5 applies cleaning and rule-based relevance filtering.",
+    "Phase 6 applies exact, normalized, and near-duplicate removal before downstream counting.",
+    "Near duplicates are collapsed for analysis hygiene, but duplicate-pressure counts are preserved in the response so repeated dissatisfaction is not lost.",
+    "Phase 7 applies deterministic theme clustering with mixed-signal preservation.",
+    "Phase 8 aligns metrics, source summaries, and chart-ready JSON to real clusters and cluster signal distributions.",
+    "Collection now continues until a source is exhausted or a source-level cap is reached; public-source indexing and rate limits may still constrain full coverage.",
+    "fb_reddit_t3_rd_1: relevant=True score=0.92 opportunity=0.15 reason=matched_discovery_scope",
+    "fb_google_play_gp_1: relevant=True score=0.78 opportunity=0.55 reason=matched_discovery_scope",
+    "fb_google_play_gp_2: relevant=True score=0.65 opportunity=1.00 reason=matched_discovery_scope",
+    "fb_app_store_1001: relevant=True score=1.00 opportunity=0.00 reason=matched_discovery_scope",
+    "fb_app_store_1002: relevant=True score=0.79 opportunity=0.60 reason=matched_discovery_scope",
+    "cluster_001: size=2 name=Helps works well",
+    "cluster_002: size=1 name=Weekly Repeats frustrations",
+    "cluster_003: size=1 name=Recommendations mixed signals",
+    "cluster_004: size=1 name=Weekly frustrations"
+  ],
+  "warnings": []
+}

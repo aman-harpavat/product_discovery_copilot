@@ -1,0 +1,1690 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "AI Product Discovery Copilot",
+    "description": "Backend API for AI Product Discovery Copilot.",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Health",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/analyze-feedback": {
+      "post": {
+        "summary": "Analyze Feedback",
+        "operationId": "analyze_feedback_analyze_feedback_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnalyzeFeedbackRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalyzeFeedbackResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/runs/{run_id}/manifest": {
+      "get": {
+        "summary": "Get Run Manifest",
+        "operationId": "get_run_manifest_runs__run_id__manifest_get",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArtifactManifest"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/runs/{run_id}/artifact/{artifact_name}": {
+      "get": {
+        "summary": "Get Run Artifact",
+        "operationId": "get_run_artifact_runs__run_id__artifact__artifact_name__get",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          },
+          {
+            "name": "artifact_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Artifact Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/runs/{run_id}/final-report": {
+      "post": {
+        "summary": "Save Final Report",
+        "operationId": "save_final_report_runs__run_id__final_report_post",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FinalReportRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FinalReportResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AnalysisTimeWindow": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "title": "Type",
+            "description": "Time window type, e.g. relative"
+          },
+          "value": {
+            "type": "string",
+            "title": "Value",
+            "description": "Time window value, e.g. 12_months"
+          }
+        },
+        "type": "object",
+        "required": [
+          "type",
+          "value"
+        ],
+        "title": "AnalysisTimeWindow"
+      },
+      "AnalyzeFeedbackRequest": {
+        "properties": {
+          "product": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Product"
+          },
+          "research_scope": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Research Scope"
+          },
+          "research_goal": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Research Goal"
+          },
+          "analysis_time_window": {
+            "$ref": "#/components/schemas/AnalysisTimeWindow"
+          },
+          "included_topics": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Included Topics"
+          },
+          "excluded_topics": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Excluded Topics"
+          },
+          "research_questions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Research Questions"
+          },
+          "success_criteria": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Success Criteria"
+          },
+          "max_runtime_seconds": {
+            "type": "integer",
+            "maximum": 600.0,
+            "minimum": 1.0,
+            "title": "Max Runtime Seconds",
+            "default": 120
+          },
+          "debug": {
+            "type": "boolean",
+            "title": "Debug",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "product",
+          "research_scope",
+          "research_goal",
+          "analysis_time_window",
+          "success_criteria"
+        ],
+        "title": "AnalyzeFeedbackRequest"
+      },
+      "AnalyzeFeedbackResponse": {
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "title": "Run Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "locked_brief": {
+            "type": "object",
+            "title": "Locked Brief"
+          },
+          "source_summary": {
+            "items": {
+              "$ref": "#/components/schemas/SourceSummaryItem"
+            },
+            "type": "array",
+            "title": "Source Summary"
+          },
+          "processing_summary": {
+            "$ref": "#/components/schemas/ProcessingSummary"
+          },
+          "quality_diagnostics": {
+            "$ref": "#/components/schemas/QualityDiagnostics"
+          },
+          "research_question_coverage": {
+            "items": {
+              "$ref": "#/components/schemas/ResearchQuestionCoverage"
+            },
+            "type": "array",
+            "title": "Research Question Coverage"
+          },
+          "feedback_clusters": {
+            "items": {
+              "$ref": "#/components/schemas/ClusterItem"
+            },
+            "type": "array",
+            "title": "Feedback Clusters"
+          },
+          "opportunities": {
+            "items": {
+              "$ref": "#/components/schemas/OpportunityItem"
+            },
+            "type": "array",
+            "title": "Opportunities"
+          },
+          "evidence_backed_segments": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceBackedSegment"
+            },
+            "type": "array",
+            "title": "Evidence Backed Segments"
+          },
+          "metrics": {
+            "$ref": "#/components/schemas/MetricsPayload"
+          },
+          "charts_data": {
+            "$ref": "#/components/schemas/ChartsDataPayload"
+          },
+          "representative_quotes": {
+            "items": {
+              "$ref": "#/components/schemas/QuoteItem"
+            },
+            "type": "array",
+            "title": "Representative Quotes"
+          },
+          "compact_gpt_payload": {
+            "$ref": "#/components/schemas/CompactGPTPayload"
+          },
+          "artifact_manifest": {
+            "$ref": "#/components/schemas/ArtifactManifest"
+          },
+          "processing_notes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Processing Notes"
+          },
+          "source_limitations": {
+            "items": {
+              "$ref": "#/components/schemas/SourceLimitation"
+            },
+            "type": "array",
+            "title": "Source Limitations"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          }
+        },
+        "type": "object",
+        "required": [
+          "run_id",
+          "status",
+          "locked_brief",
+          "source_summary",
+          "processing_summary",
+          "quality_diagnostics",
+          "research_question_coverage",
+          "feedback_clusters",
+          "metrics",
+          "charts_data",
+          "representative_quotes",
+          "compact_gpt_payload",
+          "artifact_manifest",
+          "processing_notes",
+          "source_limitations",
+          "warnings"
+        ],
+        "title": "AnalyzeFeedbackResponse"
+      },
+      "ArtifactItem": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "type": {
+            "type": "string",
+            "title": "Type"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "type",
+          "description",
+          "url"
+        ],
+        "title": "ArtifactItem"
+      },
+      "ArtifactManifest": {
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "title": "Run Id"
+          },
+          "artifacts": {
+            "items": {
+              "$ref": "#/components/schemas/ArtifactItem"
+            },
+            "type": "array",
+            "title": "Artifacts"
+          }
+        },
+        "type": "object",
+        "required": [
+          "run_id",
+          "artifacts"
+        ],
+        "title": "ArtifactManifest"
+      },
+      "ChartClusterValue": {
+        "properties": {
+          "cluster_name": {
+            "type": "string",
+            "title": "Cluster Name"
+          },
+          "frequency": {
+            "type": "integer",
+            "title": "Frequency"
+          }
+        },
+        "type": "object",
+        "required": [
+          "cluster_name",
+          "frequency"
+        ],
+        "title": "ChartClusterValue"
+      },
+      "ChartRatingValue": {
+        "properties": {
+          "rating": {
+            "type": "string",
+            "title": "Rating"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "rating",
+          "count"
+        ],
+        "title": "ChartRatingValue"
+      },
+      "ChartValueBySource": {
+        "properties": {
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source",
+          "count"
+        ],
+        "title": "ChartValueBySource"
+      },
+      "ChartValueOverTime": {
+        "properties": {
+          "month": {
+            "type": "string",
+            "title": "Month"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "month",
+          "count"
+        ],
+        "title": "ChartValueOverTime"
+      },
+      "ChartsDataPayload": {
+        "properties": {
+          "feedback_by_source": {
+            "items": {
+              "$ref": "#/components/schemas/ChartValueBySource"
+            },
+            "type": "array",
+            "title": "Feedback By Source"
+          },
+          "feedback_over_time": {
+            "items": {
+              "$ref": "#/components/schemas/ChartValueOverTime"
+            },
+            "type": "array",
+            "title": "Feedback Over Time"
+          },
+          "top_clusters": {
+            "items": {
+              "$ref": "#/components/schemas/ChartClusterValue"
+            },
+            "type": "array",
+            "title": "Top Clusters"
+          },
+          "rating_distribution": {
+            "items": {
+              "$ref": "#/components/schemas/ChartRatingValue"
+            },
+            "type": "array",
+            "title": "Rating Distribution"
+          },
+          "source_distribution_by_cluster": {
+            "items": {
+              "$ref": "#/components/schemas/SourceDistributionByCluster"
+            },
+            "type": "array",
+            "title": "Source Distribution By Cluster"
+          },
+          "cluster_signal_distribution": {
+            "items": {
+              "$ref": "#/components/schemas/ClusterSignalValue"
+            },
+            "type": "array",
+            "title": "Cluster Signal Distribution"
+          }
+        },
+        "type": "object",
+        "required": [
+          "feedback_by_source",
+          "feedback_over_time",
+          "top_clusters",
+          "rating_distribution",
+          "source_distribution_by_cluster",
+          "cluster_signal_distribution"
+        ],
+        "title": "ChartsDataPayload"
+      },
+      "ClusterItem": {
+        "properties": {
+          "cluster_id": {
+            "type": "string",
+            "title": "Cluster Id"
+          },
+          "cluster_name": {
+            "type": "string",
+            "title": "Cluster Name"
+          },
+          "cluster_summary": {
+            "type": "string",
+            "title": "Cluster Summary"
+          },
+          "cluster_tier": {
+            "type": "string",
+            "title": "Cluster Tier",
+            "default": "tier_1"
+          },
+          "cluster_size": {
+            "type": "integer",
+            "title": "Cluster Size",
+            "default": 0
+          },
+          "cluster_cohesion_score": {
+            "type": "number",
+            "title": "Cluster Cohesion Score",
+            "default": 0.0
+          },
+          "frequency": {
+            "type": "integer",
+            "title": "Frequency"
+          },
+          "dominant_signal": {
+            "type": "string",
+            "title": "Dominant Signal",
+            "default": "mixed"
+          },
+          "pain_point_evidence_count": {
+            "type": "integer",
+            "title": "Pain Point Evidence Count",
+            "default": 0
+          },
+          "positive_validation_count": {
+            "type": "integer",
+            "title": "Positive Validation Count",
+            "default": 0
+          },
+          "request_signal_count": {
+            "type": "integer",
+            "title": "Request Signal Count",
+            "default": 0
+          },
+          "mixed_signal_flag": {
+            "type": "boolean",
+            "title": "Mixed Signal Flag",
+            "default": false
+          },
+          "source_distribution": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Source Distribution"
+          },
+          "time_distribution": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Time Distribution"
+          },
+          "representative_quotes": {
+            "items": {
+              "$ref": "#/components/schemas/QuoteItem"
+            },
+            "type": "array",
+            "title": "Representative Quotes"
+          },
+          "example_feedback_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Example Feedback Ids"
+          },
+          "keywords": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Keywords"
+          },
+          "mapped_research_questions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Mapped Research Questions"
+          },
+          "mapped_success_criteria": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Mapped Success Criteria"
+          },
+          "repeat_listening_cause_tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Repeat Listening Cause Tags"
+          },
+          "relevance_score": {
+            "type": "number",
+            "title": "Relevance Score"
+          }
+        },
+        "type": "object",
+        "required": [
+          "cluster_id",
+          "cluster_name",
+          "cluster_summary",
+          "frequency",
+          "source_distribution",
+          "time_distribution",
+          "representative_quotes",
+          "example_feedback_ids",
+          "keywords",
+          "relevance_score"
+        ],
+        "title": "ClusterItem"
+      },
+      "ClusterSignalValue": {
+        "properties": {
+          "signal": {
+            "type": "string",
+            "title": "Signal"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "signal",
+          "count"
+        ],
+        "title": "ClusterSignalValue"
+      },
+      "CompactGPTPayload": {
+        "properties": {
+          "locked_brief": {
+            "type": "object",
+            "title": "Locked Brief"
+          },
+          "success_criteria": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Success Criteria"
+          },
+          "source_summary": {
+            "items": {
+              "$ref": "#/components/schemas/SourceSummaryItem"
+            },
+            "type": "array",
+            "title": "Source Summary"
+          },
+          "processing_summary": {
+            "$ref": "#/components/schemas/ProcessingSummary"
+          },
+          "quality_diagnostics": {
+            "$ref": "#/components/schemas/QualityDiagnostics"
+          },
+          "research_question_coverage": {
+            "items": {
+              "$ref": "#/components/schemas/ResearchQuestionCoverage"
+            },
+            "type": "array",
+            "title": "Research Question Coverage"
+          },
+          "top_clusters": {
+            "items": {
+              "$ref": "#/components/schemas/ClusterItem"
+            },
+            "type": "array",
+            "title": "Top Clusters"
+          },
+          "top_opportunities": {
+            "items": {
+              "$ref": "#/components/schemas/OpportunityItem"
+            },
+            "type": "array",
+            "title": "Top Opportunities"
+          },
+          "top_metrics": {
+            "type": "object",
+            "title": "Top Metrics"
+          },
+          "charts_data_summary": {
+            "type": "object",
+            "title": "Charts Data Summary"
+          },
+          "representative_quotes": {
+            "items": {
+              "$ref": "#/components/schemas/QuoteItem"
+            },
+            "type": "array",
+            "title": "Representative Quotes"
+          },
+          "opportunity_traceability_summary": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Opportunity Traceability Summary"
+          },
+          "success_criteria_impact_summary": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Success Criteria Impact Summary"
+          },
+          "evidence_backed_segments": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceBackedSegment"
+            },
+            "type": "array",
+            "title": "Evidence Backed Segments"
+          },
+          "brief_alignment_summary": {
+            "type": "object",
+            "title": "Brief Alignment Summary"
+          },
+          "source_limitations": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Source Limitations"
+          },
+          "artifact_manifest": {
+            "$ref": "#/components/schemas/ArtifactManifest"
+          }
+        },
+        "type": "object",
+        "required": [
+          "locked_brief",
+          "success_criteria",
+          "source_summary",
+          "processing_summary",
+          "quality_diagnostics",
+          "research_question_coverage",
+          "top_clusters",
+          "top_metrics",
+          "charts_data_summary",
+          "representative_quotes",
+          "source_limitations",
+          "artifact_manifest"
+        ],
+        "title": "CompactGPTPayload"
+      },
+      "ErrorResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "default": "error"
+          },
+          "error_type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "missing_fields": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Missing Fields"
+          }
+        },
+        "type": "object",
+        "required": [
+          "error_type",
+          "message"
+        ],
+        "title": "ErrorResponse"
+      },
+      "EvidenceBackedSegment": {
+        "properties": {
+          "segment_name": {
+            "type": "string",
+            "title": "Segment Name"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "estimated_record_count": {
+            "type": "integer",
+            "title": "Estimated Record Count"
+          },
+          "percentage_of_relevant_records": {
+            "type": "number",
+            "title": "Percentage Of Relevant Records"
+          },
+          "source_distribution": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Source Distribution"
+          },
+          "supporting_cluster_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Supporting Cluster Ids"
+          },
+          "representative_quotes": {
+            "items": {
+              "$ref": "#/components/schemas/QuoteItem"
+            },
+            "type": "array",
+            "title": "Representative Quotes"
+          },
+          "primary_JTBDs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Primary Jtbds"
+          },
+          "top_pain_points": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Top Pain Points"
+          },
+          "confidence_level": {
+            "type": "string",
+            "title": "Confidence Level"
+          },
+          "confidence_rationale": {
+            "type": "string",
+            "title": "Confidence Rationale"
+          }
+        },
+        "type": "object",
+        "required": [
+          "segment_name",
+          "description",
+          "estimated_record_count",
+          "percentage_of_relevant_records",
+          "source_distribution",
+          "confidence_level",
+          "confidence_rationale"
+        ],
+        "title": "EvidenceBackedSegment"
+      },
+      "FinalReportRequest": {
+        "properties": {
+          "markdown": {
+            "type": "string",
+            "title": "Markdown"
+          }
+        },
+        "type": "object",
+        "required": [
+          "markdown"
+        ],
+        "title": "FinalReportRequest"
+      },
+      "FinalReportResponse": {
+        "properties": {
+          "artifact_name": {
+            "type": "string",
+            "title": "Artifact Name"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "artifact_name",
+          "url"
+        ],
+        "title": "FinalReportResponse"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "HealthResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "service": {
+            "type": "string",
+            "title": "Service"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version"
+          },
+          "timestamp_utc": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Timestamp Utc"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "service",
+          "version",
+          "timestamp_utc"
+        ],
+        "title": "HealthResponse"
+      },
+      "MetricsPayload": {
+        "properties": {
+          "total_records_collected": {
+            "type": "integer",
+            "title": "Total Records Collected"
+          },
+          "records_after_cleaning": {
+            "type": "integer",
+            "title": "Records After Cleaning"
+          },
+          "records_relevant": {
+            "type": "integer",
+            "title": "Records Relevant"
+          },
+          "records_after_deduplication": {
+            "type": "integer",
+            "title": "Records After Deduplication"
+          },
+          "exact_duplicates_removed": {
+            "type": "integer",
+            "title": "Exact Duplicates Removed",
+            "default": 0
+          },
+          "normalized_duplicates_removed": {
+            "type": "integer",
+            "title": "Normalized Duplicates Removed",
+            "default": 0
+          },
+          "near_duplicates_removed": {
+            "type": "integer",
+            "title": "Near Duplicates Removed",
+            "default": 0
+          },
+          "cluster_count": {
+            "type": "integer",
+            "title": "Cluster Count"
+          },
+          "dominant_signal_distribution": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Dominant Signal Distribution"
+          },
+          "source_distribution": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Source Distribution"
+          },
+          "rating_distribution": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Rating Distribution"
+          },
+          "top_clusters": {
+            "items": {
+              "$ref": "#/components/schemas/TopClusterMetric"
+            },
+            "type": "array",
+            "title": "Top Clusters"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total_records_collected",
+          "records_after_cleaning",
+          "records_relevant",
+          "records_after_deduplication",
+          "cluster_count",
+          "source_distribution",
+          "rating_distribution",
+          "top_clusters"
+        ],
+        "title": "MetricsPayload"
+      },
+      "OpportunityItem": {
+        "properties": {
+          "opportunity_id": {
+            "type": "string",
+            "title": "Opportunity Id"
+          },
+          "opportunity_name": {
+            "type": "string",
+            "title": "Opportunity Name"
+          },
+          "opportunity_statement": {
+            "type": "string",
+            "title": "Opportunity Statement"
+          },
+          "derived_from_cluster_id": {
+            "type": "string",
+            "title": "Derived From Cluster Id"
+          },
+          "dominant_signal": {
+            "type": "string",
+            "title": "Dominant Signal"
+          },
+          "frequency": {
+            "type": "integer",
+            "title": "Frequency"
+          },
+          "source_distribution": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Source Distribution"
+          },
+          "supporting_cluster_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Supporting Cluster Ids"
+          },
+          "supporting_research_questions": {
+            "items": {
+              "$ref": "#/components/schemas/SupportingResearchQuestionItem"
+            },
+            "type": "array",
+            "title": "Supporting Research Questions"
+          },
+          "success_criteria_impact": {
+            "items": {
+              "$ref": "#/components/schemas/SuccessCriteriaImpactItem"
+            },
+            "type": "array",
+            "title": "Success Criteria Impact"
+          },
+          "brief_alignment_score": {
+            "type": "string",
+            "title": "Brief Alignment Score"
+          },
+          "brief_alignment_rationale": {
+            "type": "string",
+            "title": "Brief Alignment Rationale"
+          },
+          "representative_quotes": {
+            "items": {
+              "$ref": "#/components/schemas/QuoteItem"
+            },
+            "type": "array",
+            "title": "Representative Quotes"
+          },
+          "top_pain_points": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Top Pain Points"
+          }
+        },
+        "type": "object",
+        "required": [
+          "opportunity_id",
+          "opportunity_name",
+          "opportunity_statement",
+          "derived_from_cluster_id",
+          "dominant_signal",
+          "frequency",
+          "source_distribution",
+          "brief_alignment_score",
+          "brief_alignment_rationale"
+        ],
+        "title": "OpportunityItem"
+      },
+      "ProcessingSummary": {
+        "properties": {
+          "records_collected": {
+            "type": "integer",
+            "title": "Records Collected"
+          },
+          "records_after_cleaning": {
+            "type": "integer",
+            "title": "Records After Cleaning"
+          },
+          "records_relevant": {
+            "type": "integer",
+            "title": "Records Relevant"
+          },
+          "records_after_deduplication": {
+            "type": "integer",
+            "title": "Records After Deduplication"
+          },
+          "exact_duplicates_removed": {
+            "type": "integer",
+            "title": "Exact Duplicates Removed",
+            "default": 0
+          },
+          "normalized_duplicates_removed": {
+            "type": "integer",
+            "title": "Normalized Duplicates Removed",
+            "default": 0
+          },
+          "near_duplicates_removed": {
+            "type": "integer",
+            "title": "Near Duplicates Removed",
+            "default": 0
+          },
+          "source_failures": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Source Failures"
+          },
+          "source_warning_codes": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": "object",
+            "title": "Source Warning Codes"
+          },
+          "expanded_collection_applied": {
+            "type": "boolean",
+            "title": "Expanded Collection Applied",
+            "default": false
+          },
+          "expanded_collection_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expanded Collection Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "records_collected",
+          "records_after_cleaning",
+          "records_relevant",
+          "records_after_deduplication"
+        ],
+        "title": "ProcessingSummary"
+      },
+      "QualityDiagnostics": {
+        "properties": {
+          "total_collected": {
+            "type": "integer",
+            "title": "Total Collected"
+          },
+          "in_window_records": {
+            "type": "integer",
+            "title": "In Window Records"
+          },
+          "out_of_window_records": {
+            "type": "integer",
+            "title": "Out Of Window Records"
+          },
+          "relevant_records": {
+            "type": "integer",
+            "title": "Relevant Records"
+          },
+          "relevant_rate": {
+            "type": "number",
+            "title": "Relevant Rate"
+          },
+          "dedupe_rate": {
+            "type": "number",
+            "title": "Dedupe Rate"
+          },
+          "cluster_count": {
+            "type": "integer",
+            "title": "Cluster Count"
+          },
+          "average_records_per_cluster": {
+            "type": "number",
+            "title": "Average Records Per Cluster"
+          },
+          "single_record_cluster_count": {
+            "type": "integer",
+            "title": "Single Record Cluster Count"
+          },
+          "source_contamination_warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Source Contamination Warnings"
+          },
+          "time_window_violations": {
+            "type": "integer",
+            "title": "Time Window Violations",
+            "default": 0
+          },
+          "expanded_collection_applied": {
+            "type": "boolean",
+            "title": "Expanded Collection Applied",
+            "default": false
+          },
+          "expanded_collection_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expanded Collection Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total_collected",
+          "in_window_records",
+          "out_of_window_records",
+          "relevant_records",
+          "relevant_rate",
+          "dedupe_rate",
+          "cluster_count",
+          "average_records_per_cluster",
+          "single_record_cluster_count"
+        ],
+        "title": "QualityDiagnostics"
+      },
+      "QuoteItem": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "date": {
+            "type": "string",
+            "title": "Date"
+          }
+        },
+        "type": "object",
+        "required": [
+          "text",
+          "source",
+          "url",
+          "date"
+        ],
+        "title": "QuoteItem"
+      },
+      "ResearchQuestionCoverage": {
+        "properties": {
+          "question_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Question Id"
+          },
+          "question": {
+            "type": "string",
+            "title": "Question"
+          },
+          "evidence_strength": {
+            "type": "string",
+            "title": "Evidence Strength"
+          },
+          "relevant_cluster_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Relevant Cluster Ids"
+          },
+          "source_coverage": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Source Coverage"
+          },
+          "record_count": {
+            "type": "integer",
+            "title": "Record Count",
+            "default": 0
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "evidence_gaps": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Evidence Gaps"
+          }
+        },
+        "type": "object",
+        "required": [
+          "question",
+          "evidence_strength",
+          "summary"
+        ],
+        "title": "ResearchQuestionCoverage"
+      },
+      "SourceDateRange": {
+        "properties": {
+          "start": {
+            "type": "string",
+            "title": "Start"
+          },
+          "end": {
+            "type": "string",
+            "title": "End"
+          }
+        },
+        "type": "object",
+        "required": [
+          "start",
+          "end"
+        ],
+        "title": "SourceDateRange"
+      },
+      "SourceDistributionByCluster": {
+        "properties": {
+          "cluster_name": {
+            "type": "string",
+            "title": "Cluster Name"
+          },
+          "reddit": {
+            "type": "integer",
+            "title": "Reddit",
+            "default": 0
+          },
+          "google_play": {
+            "type": "integer",
+            "title": "Google Play",
+            "default": 0
+          },
+          "app_store": {
+            "type": "integer",
+            "title": "App Store",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "cluster_name"
+        ],
+        "title": "SourceDistributionByCluster"
+      },
+      "SourceLimitation": {
+        "properties": {
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "limitation": {
+            "type": "string",
+            "title": "Limitation"
+          },
+          "severity": {
+            "type": "string",
+            "title": "Severity",
+            "default": "medium"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source",
+          "limitation"
+        ],
+        "title": "SourceLimitation"
+      },
+      "SourceSummaryItem": {
+        "properties": {
+          "source_name": {
+            "type": "string",
+            "title": "Source Name"
+          },
+          "source_type": {
+            "type": "string",
+            "title": "Source Type"
+          },
+          "queries_used": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Queries Used"
+          },
+          "records_collected": {
+            "type": "integer",
+            "title": "Records Collected"
+          },
+          "records_relevant": {
+            "type": "integer",
+            "title": "Records Relevant"
+          },
+          "date_range": {
+            "$ref": "#/components/schemas/SourceDateRange"
+          },
+          "notes": {
+            "type": "string",
+            "title": "Notes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source_name",
+          "source_type",
+          "queries_used",
+          "records_collected",
+          "records_relevant",
+          "date_range",
+          "notes"
+        ],
+        "title": "SourceSummaryItem"
+      },
+      "SuccessCriteriaImpactItem": {
+        "properties": {
+          "criterion": {
+            "type": "string",
+            "title": "Criterion"
+          },
+          "impact_level": {
+            "type": "string",
+            "title": "Impact Level"
+          },
+          "rationale": {
+            "type": "string",
+            "title": "Rationale"
+          },
+          "supporting_cluster_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Supporting Cluster Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "criterion",
+          "impact_level",
+          "rationale"
+        ],
+        "title": "SuccessCriteriaImpactItem"
+      },
+      "SupportingResearchQuestionItem": {
+        "properties": {
+          "question_id": {
+            "type": "string",
+            "title": "Question Id"
+          },
+          "question": {
+            "type": "string",
+            "title": "Question"
+          },
+          "support_level": {
+            "type": "string",
+            "title": "Support Level"
+          },
+          "supporting_cluster_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Supporting Cluster Ids"
+          },
+          "evidence_summary": {
+            "type": "string",
+            "title": "Evidence Summary"
+          }
+        },
+        "type": "object",
+        "required": [
+          "question_id",
+          "question",
+          "support_level",
+          "evidence_summary"
+        ],
+        "title": "SupportingResearchQuestionItem"
+      },
+      "TopClusterMetric": {
+        "properties": {
+          "cluster_id": {
+            "type": "string",
+            "title": "Cluster Id"
+          },
+          "cluster_name": {
+            "type": "string",
+            "title": "Cluster Name"
+          },
+          "frequency": {
+            "type": "integer",
+            "title": "Frequency"
+          }
+        },
+        "type": "object",
+        "required": [
+          "cluster_id",
+          "cluster_name",
+          "frequency"
+        ],
+        "title": "TopClusterMetric"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  },
+  "servers": [
+    {
+      "url": "https://YOUR_BACKEND_URL",
+      "description": "Replace with the public HTTPS base URL of your deployed or tunneled backend."
+    }
+  ]
+}

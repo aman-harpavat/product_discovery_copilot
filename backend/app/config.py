@@ -1,0 +1,47 @@
+from pathlib import Path
+
+from pydantic import BaseModel
+
+
+BACKEND_DIR = Path(__file__).resolve().parents[1]
+
+
+class Settings(BaseModel):
+    app_name: str = "AI Product Discovery Copilot"
+    app_version: str = "0.1.0"
+    default_max_runtime_seconds: int = 120
+    outbound_request_timeout_seconds: float = 8.0
+    log_file_path: str = str(BACKEND_DIR / "logs" / "backend.log")
+    log_level: str = "INFO"
+    cache_dir_path: str = str(BACKEND_DIR / "cache")
+    runs_dir_path: str = str(BACKEND_DIR / "data" / "runs")
+    reddit_max_queries_per_run: int = 4
+    reddit_expanded_max_queries_per_run: int = 6
+    reddit_max_consecutive_rate_limits: int = 2
+    reddit_cache_ttl_seconds: int = 1800
+    reddit_query_delay_seconds: float = 8.0
+    reddit_max_retries: int = 2
+    reddit_backoff_seconds: float = 10.0
+    fast_mode_google_play_reviews: int = 200
+    fast_mode_app_store_reviews: int = 200
+    full_mode_google_play_reviews: int = 500
+    full_mode_app_store_reviews: int = 500
+    expanded_mode_google_play_reviews: int = 800
+    expanded_mode_app_store_reviews: int = 800
+    compact_payload_top_clusters: int = 6
+    compact_payload_tier_2_limit: int = 40
+    compact_payload_top_opportunities: int = 4
+    compact_payload_top_segments: int = 2
+    response_top_level_clusters: int = 0
+    response_top_level_opportunities: int = 0
+    response_top_level_segments: int = 0
+    response_max_cluster_quotes: int = 1
+    response_max_top_level_quotes: int = 3
+    response_max_example_feedback_ids: int = 2
+    response_max_quote_chars: int = 140
+    response_max_processing_notes: int = 12
+    low_record_count_threshold: int = 3
+    low_relevant_record_expansion_threshold: int = 25
+
+
+settings = Settings()
