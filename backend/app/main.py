@@ -43,8 +43,8 @@ def custom_openapi() -> dict:
     )
     openapi_schema["servers"] = [
         {
-            "url": "https://YOUR_BACKEND_URL",
-            "description": "Replace with the public HTTPS base URL of your deployed or tunneled backend.",
+            "url": "https://productdiscoverycopilot-production.up.railway.app",
+            "description": "Public HTTPS base URL of the deployed backend.",
         }
     ]
     app.openapi_schema = openapi_schema

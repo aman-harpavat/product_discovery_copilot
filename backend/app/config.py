@@ -15,7 +15,7 @@ class Settings(BaseModel):
     log_level: str = "INFO"
     cache_dir_path: str = str(BACKEND_DIR / "cache")
     runs_dir_path: str = str(BACKEND_DIR / "data" / "runs")
-    run_artifact_retention_hours: int = 24
+    run_artifact_retention_hours: int = 4
     async_run_poll_wait_cap_seconds: int = 40
     background_worker_count: int = 2
     reddit_max_queries_per_run: int = 5
