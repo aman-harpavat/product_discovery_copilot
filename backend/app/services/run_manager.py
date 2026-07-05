@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import json
 import logging
 from pathlib import Path
+import shutil
 from threading import Lock
 from time import sleep
 import math
@@ -24,6 +25,7 @@ logger = logging.getLogger(__name__)
 
 
 def start_analysis_run(request: AnalyzeFeedbackRequest) -> RunStatusResponse:
+    _cleanup_expired_runs()
     run_id = make_run_id()
     now = datetime.now(timezone.utc)
     estimated_total_seconds = _estimate_total_runtime_seconds(request)
@@ -67,6 +69,7 @@ def get_run_status(run_id: str, *, wait_seconds: int = 0) -> RunStatusResponse:
 
 
 def get_latest_run_status(*, wait_seconds: int = 0) -> RunStatusResponse:
+    _cleanup_expired_runs()
     status_paths = sorted(
         Path(settings.runs_dir_path).glob("*/_run_status.json"),
         key=lambda path: path.stat().st_mtime,
@@ -326,3 +329,42 @@ def _default_message_for_stage(stage: str) -> str:
         "completed": "Analysis completed and artifacts are ready.",
         "failed": "Analysis failed.",
     }.get(stage, "Analysis is still running.")
+
+
+def _cleanup_expired_runs() -> None:
+    retention_hours = max(1, settings.run_artifact_retention_hours)
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=retention_hours)
+    runs_dir = Path(settings.runs_dir_path)
+    if not runs_dir.exists():
+        return
+
+    for run_dir in runs_dir.iterdir():
+        if not run_dir.is_dir():
+            continue
+        status_path = run_dir / _STATUS_FILENAME
+        if not status_path.exists():
+            continue
+        try:
+            status_record = json.loads(status_path.read_text(encoding="utf-8"))
+            status = str(status_record.get("status", ""))
+            updated_at_raw = status_record.get("updated_at")
+            updated_at = (
+                _parse_status_datetime(updated_at_raw)
+                if isinstance(updated_at_raw, str)
+                else datetime.fromtimestamp(status_path.stat().st_mtime, tz=timezone.utc)
+            )
+        except Exception:  # pragma: no cover - defensive cleanup fallback
+            logger.warning("run cleanup skipped unreadable status file path=%s", status_path)
+            continue
+
+        if status in {"queued", "running"}:
+            continue
+        if updated_at > cutoff:
+            continue
+
+        shutil.rmtree(run_dir, ignore_errors=True)
+        logger.info(
+            "deleted expired run artifacts run_id=%s retention_hours=%s",
+            run_dir.name,
+            retention_hours,
+        )

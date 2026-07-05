@@ -1,4 +1,5 @@
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
+import json
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -357,3 +358,56 @@ def test_latest_run_status_returns_most_recent_async_run(monkeypatch, tmp_path: 
     assert latest_response.status_code == 200
     latest_payload = latest_response.json()
     assert latest_payload["run_id"] == run_id
+
+
+def test_start_run_cleans_up_old_finished_runs(monkeypatch, tmp_path: Path) -> None:
+    from app.collectors.google_play import normalize_google_play_review
+    from app.config import settings
+    from app.services import pipeline
+
+    runs_dir = tmp_path / "runs"
+    monkeypatch.setattr(settings, "runs_dir_path", str(runs_dir))
+    monkeypatch.setattr(settings, "run_artifact_retention_hours", 1)
+    monkeypatch.setattr(
+        pipeline,
+        "collect_google_play_reviews",
+        lambda app_id: [
+            normalize_google_play_review(
+                {
+                    "reviewId": "gp_cleanup_1",
+                    "content": "Spotify recommendations feel repetitive.",
+                    "score": 2,
+                    "thumbsUpCount": 1,
+                    "at": datetime(2026, 5, 2, 12, 0, 0),
+                    "reviewCreatedVersion": "9.0.0",
+                }
+            )
+        ],
+    )
+    monkeypatch.setattr(pipeline, "collect_reddit_feedback", lambda queries: [])
+    monkeypatch.setattr(pipeline, "collect_app_store_reviews", lambda app_id: [])
+
+    old_run_dir = runs_dir / "run_old1234"
+    old_run_dir.mkdir(parents=True, exist_ok=True)
+    old_status = {
+        "run_id": "run_old1234",
+        "status": "completed",
+        "current_stage": "completed",
+        "progress_percent": 100,
+        "started_at": (datetime.now(timezone.utc) - timedelta(hours=3)).isoformat(),
+        "updated_at": (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat(),
+        "estimated_total_seconds": 100,
+        "message": "Done",
+        "warnings": [],
+        "error_message": None,
+    }
+    (old_run_dir / "_run_status.json").write_text(
+        json.dumps(old_status),
+        encoding="utf-8",
+    )
+    (old_run_dir / "all_clusters.json").write_text("{}", encoding="utf-8")
+
+    response = client.post("/analyze-feedback/start", json=valid_payload())
+
+    assert response.status_code == 200
+    assert not old_run_dir.exists()
