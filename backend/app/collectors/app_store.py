@@ -10,6 +10,7 @@ import httpx
 
 from app.config import settings
 from app.schemas import Engagement, FeedbackMetadata, RawFeedbackItem
+from app.utils.dates import is_within_relative_window
 
 DEFAULT_APP_STORE_APP_ID = "324684580"
 DEFAULT_APP_STORE_COUNTRY = "us"
@@ -39,13 +40,14 @@ def _default_fetcher(url: str) -> str:
 
 def build_app_store_reviews_url(
     app_id: str = DEFAULT_APP_STORE_APP_ID,
-    country: str = DEFAULT_APP_STORE_COUNTRY,
+    country: str | None = DEFAULT_APP_STORE_COUNTRY,
     page: int = 1,
 ) -> str:
+    resolved_country = country or DEFAULT_APP_STORE_COUNTRY
     page_segment = f"page={page}/" if page > 1 else ""
     return (
         "https://itunes.apple.com/"
-        f"{country}/rss/customerreviews/{page_segment}id={app_id}/sortby=mostrecent/xml"
+        f"{resolved_country}/rss/customerreviews/{page_segment}id={app_id}/sortby=mostrecent/xml"
     )
 
 
@@ -82,7 +84,7 @@ def _extract_review_id(entry_id: str) -> str:
 def normalize_app_store_entry(
     entry: ElementTree.Element,
     *,
-    country: str = DEFAULT_APP_STORE_COUNTRY,
+    country: str | None = DEFAULT_APP_STORE_COUNTRY,
     app_id: str = DEFAULT_APP_STORE_APP_ID,
 ) -> RawFeedbackItem:
     entry_id = (
@@ -128,9 +130,10 @@ def normalize_app_store_entry(
 def collect_app_store_reviews(
     *,
     app_id: str = DEFAULT_APP_STORE_APP_ID,
-    country: str = DEFAULT_APP_STORE_COUNTRY,
-    limit: int = DEFAULT_APP_STORE_LIMIT,
+    country: str | None = DEFAULT_APP_STORE_COUNTRY,
+    limit: int | None = DEFAULT_APP_STORE_LIMIT,
     max_pages: int = DEFAULT_APP_STORE_MAX_PAGES,
+    time_window_value: str | None = None,
     fetcher: Optional[AppStoreFetcher] = None,
 ) -> list[RawFeedbackItem]:
     active_fetcher = fetcher or _default_fetcher
@@ -138,16 +141,28 @@ def collect_app_store_reviews(
     seen_feedback_ids: set[str] = set()
 
     logger.info(
-        "app_store collection started app_id=%s target_reviews=%s max_pages=%s",
+        "app_store collection started app_id=%s target_reviews=%s max_pages=%s country=%s",
         app_id,
         limit,
         max_pages,
+        country or DEFAULT_APP_STORE_COUNTRY,
     )
 
     for page in range(1, max_pages + 1):
-        payload = active_fetcher(
-            build_app_store_reviews_url(app_id=app_id, country=country, page=page)
-        )
+        url = build_app_store_reviews_url(app_id=app_id, country=country, page=page)
+        try:
+            payload = active_fetcher(url)
+        except httpx.HTTPStatusError as exc:
+            status_code = exc.response.status_code if exc.response is not None else None
+            if page > 1 and status_code in {400, 404}:
+                logger.warning(
+                    "app_store pagination_boundary_reached page=%s status_code=%s cumulative_reviews=%s",
+                    page,
+                    status_code,
+                    len(feedback_items),
+                )
+                break
+            raise
         root = ElementTree.fromstring(payload)
         entries = root.findall("atom:entry", APP_STORE_NS)
 
@@ -160,6 +175,7 @@ def collect_app_store_reviews(
             break
 
         page_added = 0
+        page_reached_window_boundary = False
         for entry in entries:
             normalized = normalize_app_store_entry(entry, country=country, app_id=app_id)
             if not normalized.text.strip():
@@ -167,11 +183,18 @@ def collect_app_store_reviews(
             if normalized.feedback_id in seen_feedback_ids:
                 continue
 
+            if time_window_value and not is_within_relative_window(
+                normalized.date,
+                time_window_value,
+            ):
+                page_reached_window_boundary = True
+                continue
+
             seen_feedback_ids.add(normalized.feedback_id)
             feedback_items.append(normalized)
             page_added += 1
 
-            if len(feedback_items) >= limit:
+            if limit is not None and len(feedback_items) >= limit:
                 logger.info(
                     "app_store reached cap page=%s cumulative_reviews=%s",
                     page,
@@ -186,6 +209,13 @@ def collect_app_store_reviews(
             page_added,
             len(feedback_items),
         )
+        if time_window_value and page_reached_window_boundary:
+            logger.info(
+                "app_store reached time-window boundary page=%s cumulative_reviews=%s",
+                page,
+                len(feedback_items),
+            )
+            break
         if page_added == 0:
             break
 

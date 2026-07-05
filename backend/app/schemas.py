@@ -5,6 +5,7 @@ from typing import Any, Optional
 
 from pydantic import BaseModel, Field, model_validator
 
+from app.utils.countries import resolve_country_code
 
 DEFAULT_SPOTIFY_RESEARCH_QUESTIONS = [
     "Why do users struggle to discover new music?",
@@ -50,11 +51,12 @@ class AnalyzeFeedbackRequest(BaseModel):
     research_scope: str = Field(..., min_length=1)
     research_goal: str = Field(..., min_length=1)
     analysis_time_window: AnalysisTimeWindow
+    country: Optional[str] = None
     included_topics: list[str] = Field(..., min_length=1)
     excluded_topics: list[str] = Field(..., min_length=1)
     research_questions: list[str] = Field(..., min_length=1)
     success_criteria: list[str] = Field(..., min_length=1)
-    max_runtime_seconds: int = Field(default=120, ge=1, le=600)
+    max_runtime_seconds: int = Field(default=1800, ge=60, le=3600)
     debug: bool = False
 
     @model_validator(mode="after")
@@ -64,6 +66,7 @@ class AnalyzeFeedbackRequest(BaseModel):
                 "This implementation is currently fixed to Spotify. Set product to 'Spotify'."
             )
         self.product = "Spotify"
+        self.country = resolve_country_code(self.country)
         return self
 
 
@@ -348,6 +351,22 @@ class AnalyzeFeedbackResponse(BaseModel):
     processing_notes: list[str]
     source_limitations: list[SourceLimitation]
     warnings: list[str]
+
+
+class RunStatusResponse(BaseModel):
+    run_id: str
+    status: str
+    current_stage: str
+    progress_percent: int = 0
+    started_at: datetime
+    updated_at: datetime
+    estimated_minutes_remaining: int = 0
+    estimated_seconds_remaining: int = 0
+    message: str
+    warnings: list[str] = Field(default_factory=list)
+    error_message: Optional[str] = None
+    manifest_url: Optional[str] = None
+    artifact_manifest: Optional[ArtifactManifest] = None
 
 
 class ErrorResponse(BaseModel):

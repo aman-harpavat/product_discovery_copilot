@@ -6,6 +6,7 @@ import logging
 from typing import Any, Optional, Tuple
 
 from app.schemas import Engagement, FeedbackMetadata, RawFeedbackItem
+from app.utils.dates import is_within_relative_window
 
 DEFAULT_GOOGLE_PLAY_APP_ID = "com.spotify.music"
 DEFAULT_GOOGLE_PLAY_COUNTRY = "us"
@@ -20,7 +21,7 @@ logger = logging.getLogger(__name__)
 def _default_fetcher(
     *,
     app_id: str,
-    country: str,
+    country: str | None,
     lang: str,
     count: int,
     continuation_token: Any = None,
@@ -32,13 +33,18 @@ def _default_fetcher(
             "google-play-scraper is not installed; install dependencies before collecting Google Play reviews."
         ) from exc
 
+    kwargs: dict[str, Any] = {
+        "lang": lang,
+        "sort": Sort.NEWEST,
+        "count": count,
+        "continuation_token": continuation_token,
+    }
+    if country:
+        kwargs["country"] = country
+
     items, continuation_token = reviews(
         app_id,
-        lang=lang,
-        country=country,
-        sort=Sort.NEWEST,
-        count=count,
-        continuation_token=continuation_token,
+        **kwargs,
     )
     return items, continuation_token
 
@@ -59,7 +65,7 @@ def normalize_google_play_review(
     review: dict[str, Any],
     *,
     app_id: str = DEFAULT_GOOGLE_PLAY_APP_ID,
-    country: str = DEFAULT_GOOGLE_PLAY_COUNTRY,
+    country: str | None = DEFAULT_GOOGLE_PLAY_COUNTRY,
 ) -> RawFeedbackItem:
     review_id = str(review.get("reviewId") or review.get("at") or review.get("userName") or "unknown")
     content = str(review.get("content") or "").strip()
@@ -92,23 +98,39 @@ def normalize_google_play_review(
 def collect_google_play_reviews(
     *,
     app_id: str = DEFAULT_GOOGLE_PLAY_APP_ID,
-    country: str = DEFAULT_GOOGLE_PLAY_COUNTRY,
+    country: str | None = DEFAULT_GOOGLE_PLAY_COUNTRY,
     lang: str = DEFAULT_GOOGLE_PLAY_LANGUAGE,
-    count: int = DEFAULT_GOOGLE_PLAY_MAX_REVIEWS,
+    count: int | None = DEFAULT_GOOGLE_PLAY_MAX_REVIEWS,
     batch_size: int = DEFAULT_GOOGLE_PLAY_BATCH_SIZE,
+    time_window_value: str | None = None,
+    max_pages: int | None = None,
     fetcher: Optional[GooglePlayFetcher] = None,
 ) -> list[RawFeedbackItem]:
     active_fetcher = fetcher or _default_fetcher
-    remaining = max(count, 0)
     continuation_token: Any = None
-    collected_items: list[dict[str, Any]] = []
+    normalized_items: list[RawFeedbackItem] = []
+    seen_feedback_ids: set[str] = set()
     page = 0
 
-    logger.info("google_play collection started app_id=%s target_reviews=%s", app_id, count)
+    logger.info(
+        "google_play collection started app_id=%s target_reviews=%s country=%s",
+        app_id,
+        count,
+        country or "none",
+    )
 
-    while remaining > 0:
+    while True:
+        if max_pages is not None and page >= max_pages:
+            logger.info(
+                "google_play reached page safety cap pages=%s cumulative_reviews=%s",
+                page,
+                len(normalized_items),
+            )
+            break
         page += 1
-        fetch_count = min(batch_size, remaining)
+        fetch_count = min(batch_size, count - len(normalized_items)) if count is not None else batch_size
+        if fetch_count <= 0:
+            break
         items, continuation_token = active_fetcher(
             app_id=app_id,
             country=country,
@@ -121,28 +143,61 @@ def collect_google_play_reviews(
             logger.info(
                 "google_play page=%s returned no items cumulative_reviews=%s",
                 page,
-                len(collected_items),
+                len(normalized_items),
             )
             break
 
-        collected_items.extend(items)
-        remaining = count - len(collected_items)
+        page_reached_window_boundary = False
+        page_added = 0
+        for review in items:
+            if not str(review.get("content") or "").strip():
+                continue
+
+            normalized = normalize_google_play_review(review, app_id=app_id, country=country)
+            if normalized.feedback_id in seen_feedback_ids:
+                continue
+
+            if time_window_value and not is_within_relative_window(
+                normalized.date,
+                time_window_value,
+            ):
+                page_reached_window_boundary = True
+                continue
+
+            seen_feedback_ids.add(normalized.feedback_id)
+            normalized_items.append(normalized)
+            page_added += 1
+
+            if count is not None and len(normalized_items) >= count:
+                logger.info(
+                    "google_play reached review cap page=%s cumulative_reviews=%s",
+                    page,
+                    len(normalized_items),
+                )
+                return normalized_items[:count]
+
         logger.info(
             "google_play page=%s fetched=%s cumulative_reviews=%s remaining=%s",
             page,
             len(items),
-            len(collected_items),
-            remaining,
+            len(normalized_items),
+            (count - len(normalized_items)) if count is not None else "open",
         )
+
+        if time_window_value and page_reached_window_boundary:
+            logger.info(
+                "google_play reached time-window boundary page=%s cumulative_reviews=%s",
+                page,
+                len(normalized_items),
+            )
+            break
+
+        if page_added == 0:
+            break
 
         if continuation_token is None:
             break
 
-    normalized_items = [
-        normalize_google_play_review(review, app_id=app_id, country=country)
-        for review in collected_items[:count]
-        if str(review.get("content") or "").strip()
-    ]
     logger.info(
         "google_play collection completed normalized_reviews=%s",
         len(normalized_items),

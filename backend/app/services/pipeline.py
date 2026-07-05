@@ -6,7 +6,7 @@ from copy import deepcopy
 import logging
 import math
 from time import perf_counter
-from typing import Any
+from typing import Any, Callable, Optional
 
 from app.config import settings
 from app.collectors.app_store import (
@@ -56,15 +56,21 @@ from app.schemas import (
 )
 from app.services.artifacts import (
     build_artifact_manifest,
+    ensure_run_dir,
     write_csv_artifact,
     write_json_artifact,
     write_markdown_artifact,
 )
 from app.services.source_discovery import build_reddit_query_seeds
-from app.utils.dates import is_within_relative_window, month_bucket
+from app.utils.dates import (
+    is_within_relative_window,
+    month_bucket,
+    relative_window_months_equivalent,
+)
 from app.utils.ids import make_run_id
 
 logger = logging.getLogger(__name__)
+StatusCallback = Callable[[str, int, Optional[str]], None]
 
 
 def collect_reddit_feedback(
@@ -88,14 +94,24 @@ def collect_reddit_feedback(
 
 def build_mock_analysis_response(
     request: AnalyzeFeedbackRequest,
+    *,
+    run_id: str | None = None,
+    status_callback: StatusCallback | None = None,
 ) -> AnalyzeFeedbackResponse:
     """Build a compact Action-safe response plus file-backed artifacts."""
-    run_id = make_run_id()
+    run_id = run_id or make_run_id()
+    ensure_run_dir(run_id)
     run_started_at = perf_counter()
     collection_plan = _build_collection_plan(request)
     reddit_queries = build_reddit_query_seeds(request)[
         : int(collection_plan["reddit_query_count"])
     ]
+    _emit_status(
+        status_callback,
+        "collecting_sources",
+        10,
+        "Collecting Google Play, App Store, and Reddit feedback.",
+    )
     logger.info(
         "analyze_feedback started run_id=%s product=%s scope=%s goal=%s reddit_queries=%s collection_plan=%s",
         run_id,
@@ -114,6 +130,12 @@ def build_mock_analysis_response(
         app_store_warnings,
     ) = _collect_all_sources(collection_plan=collection_plan, reddit_queries=reddit_queries)
     collected_feedback = reddit_feedback + google_play_feedback + app_store_feedback
+    _emit_status(
+        status_callback,
+        "cleaning_feedback",
+        40,
+        "Cleaning and normalizing collected feedback.",
+    )
     logger.info("cleaning started records=%s", len(collected_feedback))
     cleaned_feedback = clean_feedback_items(collected_feedback)
     logger.info("cleaning completed records=%s", len(cleaned_feedback))
@@ -125,6 +147,12 @@ def build_mock_analysis_response(
         "time-window filtering completed in_window=%s out_of_window=%s",
         len(in_window_feedback),
         len(out_of_window_feedback),
+    )
+    _emit_status(
+        status_callback,
+        "filtering_relevance",
+        55,
+        "Filtering for discovery-relevant evidence within the requested time window.",
     )
     logger.info("relevance filtering started records=%s", len(in_window_feedback))
     relevant_feedback, relevance_debug_notes = filter_relevant_feedback(
@@ -179,12 +207,24 @@ def build_mock_analysis_response(
         )
 
     logger.info("relevance filtering completed records=%s", len(relevant_feedback))
+    _emit_status(
+        status_callback,
+        "deduplicating_feedback",
+        68,
+        "Removing exact and near duplicates while preserving duplicate pressure metrics.",
+    )
     logger.info("deduplication started records=%s", len(relevant_feedback))
     deduped_feedback, dedupe_debug_notes, dedupe_stats = deduplicate_feedback_items(
         relevant_feedback,
         debug=request.debug,
     )
     logger.info("deduplication completed records=%s", len(deduped_feedback))
+    _emit_status(
+        status_callback,
+        "clustering_feedback",
+        80,
+        "Grouping related feedback into clusters and traceability structures.",
+    )
     logger.info("clustering started records=%s", len(deduped_feedback))
     clusters, clustering_debug_notes = cluster_feedback_items(
         deduped_feedback,
@@ -297,7 +337,13 @@ def build_mock_analysis_response(
             records_relevant=relevant_counts_by_source["google_play"],
             date_range=_derive_date_range(google_play_feedback),
             notes=(
-                f"Google Play collection is active in Phase 2 with continuation-based paging up to a source cap of {max(collection_plan['google_play_review_cap'], len(google_play_feedback))} reviews for this run. Phase 5 applies cleaning and "
+                (
+                    f"Google Play country filter: {request.country}. "
+                    if request.country
+                    else "Google Play country filter: none explicitly requested. "
+                )
+                +
+                f"Google Play collection is active in Phase 2 with continuation-based paging until the requested time window is exhausted or the background job hits a safety page budget of {collection_plan['google_play_max_pages']} pages for this run. Phase 5 applies cleaning and "
                 f"scope relevance filtering before records count as relevant. {relevant_counts_by_source['google_play']} relevant records currently contribute across {sum(1 for cluster in clusters if cluster.source_distribution['google_play'] > 0)} clusters."
             ),
         ),
@@ -309,7 +355,13 @@ def build_mock_analysis_response(
             records_relevant=relevant_counts_by_source["app_store"],
             date_range=_derive_date_range(app_store_feedback),
             notes=(
-                f"App Store collection is active in Phase 4 using paginated public customer reviews RSS pages up to a source cap of {max(collection_plan['app_store_review_cap'], len(app_store_feedback))} reviews for this run. "
+                (
+                    f"App Store storefront filter: {request.country}. "
+                    if request.country
+                    else "App Store storefront filter: no explicit country was requested, so the public RSS fallback storefront is US. "
+                )
+                +
+                f"App Store collection is active in Phase 4 using paginated public customer reviews RSS pages until the requested time window is exhausted or the background job hits a safety page budget of {collection_plan['app_store_max_pages']} pages for this run. "
                 f"Phase 5 applies cleaning and scope relevance filtering. {relevant_counts_by_source['app_store']} relevant records currently contribute across {sum(1 for cluster in clusters if cluster.source_distribution['app_store'] > 0)} clusters."
             ),
         ),
@@ -389,9 +441,9 @@ def build_mock_analysis_response(
     )
     if collection_plan["fast_mode"]:
         warnings.append(
-            "Runtime-aware source caps were applied for this interactive run to keep response time within the requested budget: "
-            f"google_play_cap={collection_plan['google_play_review_cap']}, "
-            f"app_store_cap={collection_plan['app_store_review_cap']}."
+            "Runtime-aware source safety budgets were applied for this interactive run to keep response time within the requested budget: "
+            f"google_play_pages={collection_plan['google_play_max_pages']}, "
+            f"app_store_pages={collection_plan['app_store_max_pages']}."
         )
     if not request.included_topics:
         warnings.append(
@@ -510,6 +562,12 @@ def build_mock_analysis_response(
         source_limitations=[item.limitation for item in source_limitations],
         artifact_manifest=compact_artifact_manifest,
     )
+    _emit_status(
+        status_callback,
+        "writing_artifacts",
+        92,
+        "Writing compact and deep evidence artifacts for GPT retrieval.",
+    )
     _write_run_artifacts(
         run_id=run_id,
         raw_feedback=collected_feedback,
@@ -529,14 +587,14 @@ def build_mock_analysis_response(
         tiered_clusters=tiered_clusters,
     )
     artifact_manifest = build_artifact_manifest(run_id)
-    compact_gpt_payload.artifact_manifest = ArtifactManifest(run_id=run_id, artifacts=[])
-    write_json_artifact(
-        run_id,
-        "compact_gpt_payload.json",
-        compact_gpt_payload.model_dump(),
-    )
 
     final_status = "partial_success" if source_failures else "completed"
+    _emit_status(
+        status_callback,
+        "completed",
+        100,
+        "Analysis completed and artifacts are ready.",
+    )
     logger.info(
         "analyze_feedback completed run_id=%s status=%s elapsed_seconds=%.2f total_collected=%s relevant=%s deduped=%s clusters=%s",
         run_id,
@@ -581,12 +639,24 @@ def build_mock_analysis_response(
     )
 
 
+def _emit_status(
+    status_callback: StatusCallback | None,
+    stage: str,
+    progress_percent: int,
+    message: str,
+) -> None:
+    if status_callback is not None:
+        status_callback(stage, progress_percent, message)
+
+
 def _collect_google_play_feedback(
     *,
-    review_cap: int,
+    time_window_value: str,
+    max_pages: int,
+    country: str | None,
 ) -> tuple[list[RawFeedbackItem], list[str]]:
     try:
-        return _call_google_play_collector(review_cap), []
+        return _call_google_play_collector(time_window_value, max_pages, country), []
     except Exception as exc:
         warning = (
             "Google Play collection failed; returning contract-compatible response with no Google Play records. "
@@ -626,11 +696,13 @@ def _collect_reddit_feedback(
 
 def _collect_app_store_feedback(
     *,
-    review_cap: int,
+    time_window_value: str,
     max_pages: int,
+    country: str | None,
 ) -> tuple[list[RawFeedbackItem], list[str]]:
     try:
-        return _call_app_store_collector(review_cap, max_pages), []
+        records = _call_app_store_collector(time_window_value, max_pages, country)
+        return records, []
     except Exception as exc:
         warning = (
             "App Store collection failed; returning contract-compatible response with no App Store records. "
@@ -641,7 +713,7 @@ def _collect_app_store_feedback(
 
 def _collect_all_sources(
     *,
-    collection_plan: dict[str, int | bool],
+    collection_plan: dict[str, int | float | bool | str],
     reddit_queries: list[str],
     include_reddit: bool = True,
 ) -> tuple[
@@ -656,7 +728,9 @@ def _collect_all_sources(
     executor = ThreadPoolExecutor(max_workers=3)
     google_play_future = executor.submit(
         _collect_google_play_feedback,
-        review_cap=int(collection_plan["google_play_review_cap"]),
+        time_window_value=str(collection_plan["time_window_value"]),
+        max_pages=int(collection_plan["google_play_max_pages"]),
+        country=str(collection_plan["country"]) if collection_plan["country"] else None,
     )
     reddit_future = (
         executor.submit(
@@ -669,8 +743,9 @@ def _collect_all_sources(
     )
     app_store_future = executor.submit(
         _collect_app_store_feedback,
-        review_cap=int(collection_plan["app_store_review_cap"]),
+        time_window_value=str(collection_plan["time_window_value"]),
         max_pages=int(collection_plan["app_store_max_pages"]),
+        country=str(collection_plan["country"]) if collection_plan["country"] else None,
     )
 
     google_play_feedback, google_play_warnings = _await_collection_future(
@@ -732,12 +807,17 @@ def _await_collection_future(
 
 
 def _call_google_play_collector(
-    review_cap: int,
+    time_window_value: str,
+    max_pages: int,
+    country: str | None,
 ) -> list[RawFeedbackItem]:
     try:
         return collect_google_play_reviews(
             app_id=DEFAULT_GOOGLE_PLAY_APP_ID,
-            count=review_cap,
+            country=country,
+            count=None,
+            time_window_value=time_window_value,
+            max_pages=max_pages,
         )
     except TypeError:
         # Backward compatibility for tests or shims that monkeypatch the older single-arg signature.
@@ -745,14 +825,17 @@ def _call_google_play_collector(
 
 
 def _call_app_store_collector(
-    review_cap: int,
+    time_window_value: str,
     max_pages: int,
+    country: str | None,
 ) -> list[RawFeedbackItem]:
     try:
         return collect_app_store_reviews(
             app_id=DEFAULT_APP_STORE_APP_ID,
-            limit=review_cap,
+            country=country,
+            limit=None,
             max_pages=max_pages,
+            time_window_value=time_window_value,
         )
     except TypeError:
         # Backward compatibility for tests or shims that monkeypatch the older single-arg signature.
@@ -761,27 +844,30 @@ def _call_app_store_collector(
 
 def _build_collection_plan(
     request: AnalyzeFeedbackRequest,
-) -> dict[str, int | float | bool]:
+) -> dict[str, int | float | bool | str]:
     fast_mode = request.max_runtime_seconds <= 120
-    google_play_review_cap = (
-        settings.fast_mode_google_play_reviews
-        if fast_mode
-        else settings.full_mode_google_play_reviews
+    months_equivalent = relative_window_months_equivalent(
+        request.analysis_time_window.value
     )
-    app_store_review_cap = (
-        settings.fast_mode_app_store_reviews
-        if fast_mode
-        else settings.full_mode_app_store_reviews
+    google_play_max_pages = _estimate_store_page_cap(
+        months_equivalent=months_equivalent,
+        hard_cap=settings.google_play_page_safety_cap,
+        minimum_pages=10,
+        pages_per_month=15,
     )
-    google_play_timeout_seconds = (
-        settings.fast_mode_google_play_timeout_seconds
-        if fast_mode
-        else settings.full_mode_google_play_timeout_seconds
+    app_store_max_pages = _estimate_store_page_cap(
+        months_equivalent=months_equivalent,
+        hard_cap=settings.app_store_page_safety_cap,
+        minimum_pages=8,
+        pages_per_month=10,
     )
-    app_store_timeout_seconds = (
-        settings.fast_mode_app_store_timeout_seconds
-        if fast_mode
-        else settings.full_mode_app_store_timeout_seconds
+    google_play_timeout_seconds = min(
+        900.0,
+        max(90.0, request.max_runtime_seconds * 0.50),
+    )
+    app_store_timeout_seconds = min(
+        720.0,
+        max(90.0, request.max_runtime_seconds * 0.40),
     )
     reddit_result_limit = (
         settings.fast_mode_reddit_result_limit
@@ -808,17 +894,12 @@ def _build_collection_plan(
         if fast_mode
         else settings.full_mode_reddit_max_total_seconds
     )
-    app_store_max_pages = (
-        settings.fast_mode_app_store_max_pages
-        if fast_mode
-        else settings.full_mode_app_store_max_pages
-    )
-    app_store_review_cap = min(app_store_review_cap, app_store_max_pages * 50)
 
     return {
         "fast_mode": fast_mode,
-        "google_play_review_cap": google_play_review_cap,
-        "app_store_review_cap": app_store_review_cap,
+        "time_window_value": request.analysis_time_window.value,
+        "country": request.country,
+        "google_play_max_pages": google_play_max_pages,
         "app_store_max_pages": app_store_max_pages,
         "google_play_timeout_seconds": google_play_timeout_seconds,
         "app_store_timeout_seconds": app_store_timeout_seconds,
@@ -836,36 +917,46 @@ def _build_collection_plan(
     }
 
 
+def _estimate_store_page_cap(
+    *,
+    months_equivalent: float,
+    hard_cap: int,
+    minimum_pages: int,
+    pages_per_month: int,
+) -> int:
+    estimated_pages = minimum_pages + int(math.ceil(months_equivalent * pages_per_month))
+    return max(minimum_pages, min(hard_cap, estimated_pages))
+
+
 def _build_expanded_collection_plan(
-    collection_plan: dict[str, int | bool],
-) -> dict[str, int | bool]:
-    expanded_google_play_cap = max(
-        int(collection_plan["google_play_review_cap"]),
-        settings.expanded_mode_google_play_reviews,
+    collection_plan: dict[str, int | float | bool | str],
+) -> dict[str, int | float | bool | str]:
+    expanded_google_play_pages = min(
+        settings.google_play_page_safety_cap,
+        max(int(collection_plan["google_play_max_pages"]), 80),
     )
-    expanded_app_store_cap = max(
-        int(collection_plan["app_store_review_cap"]),
-        settings.expanded_mode_app_store_reviews,
+    expanded_app_store_pages = min(
+        settings.app_store_page_safety_cap,
+        max(int(collection_plan["app_store_max_pages"]), 60),
     )
     expanded = deepcopy(collection_plan)
-    expanded["google_play_review_cap"] = expanded_google_play_cap
-    expanded["app_store_review_cap"] = expanded_app_store_cap
-    expanded["app_store_max_pages"] = max(1, math.ceil(expanded_app_store_cap / 50))
+    expanded["google_play_max_pages"] = expanded_google_play_pages
+    expanded["app_store_max_pages"] = expanded_app_store_pages
     return expanded
 
 
 def _should_expand_collection(
     *,
-    collection_plan: dict[str, int | bool],
+    collection_plan: dict[str, int | float | bool | str],
     relevant_feedback: list[RawFeedbackItem],
 ) -> bool:
-    current_cap = int(collection_plan["google_play_review_cap"]) + int(
-        collection_plan["app_store_review_cap"]
+    current_pages = int(collection_plan["google_play_max_pages"]) + int(
+        collection_plan["app_store_max_pages"]
     )
-    max_cap = settings.expanded_mode_google_play_reviews + settings.expanded_mode_app_store_reviews
+    max_pages = settings.google_play_page_safety_cap + settings.app_store_page_safety_cap
     return (
         len(relevant_feedback) < settings.low_relevant_record_expansion_threshold
-        and current_cap < max_cap
+        and current_pages < max_pages
     )
 
 
@@ -1660,6 +1751,16 @@ def _write_run_artifacts(
     source_limitations: list[SourceLimitation],
     tiered_clusters: dict[str, list[ClusterItem]],
 ) -> None:
+    artifacts_started_at = perf_counter()
+    logger.info(
+        "artifact writing started run_id=%s raw=%s clean=%s clusters=%s opportunities=%s segments=%s",
+        run_id,
+        len(raw_feedback),
+        len(clean_feedback),
+        len(all_clusters),
+        len(opportunities),
+        len(evidence_backed_segments),
+    )
     write_csv_artifact(
         run_id,
         "all_feedback_raw.csv",
@@ -1690,11 +1791,7 @@ def _write_run_artifacts(
     write_json_artifact(
         run_id,
         "all_clusters_compact.json",
-        {
-            "tier_1": [_compact_cluster_artifact_row(item) for item in tiered_clusters["tier_1"]],
-            "tier_2": [_compact_cluster_artifact_row(item) for item in tiered_clusters["tier_2"]],
-            "tier_3": [_compact_cluster_artifact_row(item) for item in tiered_clusters["tier_3"]],
-        },
+        _write_compact_cluster_artifacts(run_id, tiered_clusters),
     )
     write_csv_artifact(
         run_id,
@@ -1729,7 +1826,7 @@ def _write_run_artifacts(
     write_json_artifact(
         run_id,
         "opportunity_traceability_compact.json",
-        [_compact_opportunity_traceability_row(item) for item in opportunities],
+        _write_compact_opportunity_artifacts(run_id, opportunities),
     )
     write_json_artifact(
         run_id,
@@ -1773,6 +1870,12 @@ def _write_run_artifacts(
         run_id,
         "evidence_appendix.md",
         _build_evidence_appendix_markdown(all_clusters, research_question_coverage),
+    )
+    logger.info(
+        "artifact writing completed run_id=%s elapsed_seconds=%.2f artifact_count=%s",
+        run_id,
+        perf_counter() - artifacts_started_at,
+        17,
     )
 
 
@@ -1903,6 +2006,28 @@ def _compact_cluster_artifact_row(cluster: ClusterItem) -> dict[str, Any]:
     }
 
 
+def _write_compact_cluster_artifacts(
+    run_id: str,
+    tiered_clusters: dict[str, list[ClusterItem]],
+) -> dict[str, Any]:
+    parts: list[dict[str, Any]] = []
+    for tier_name in ["tier_1", "tier_2", "tier_3"]:
+        artifact_name = f"all_clusters_compact_{tier_name}.json"
+        payload = [_compact_cluster_artifact_row(item) for item in tiered_clusters[tier_name]]
+        write_json_artifact(run_id, artifact_name, payload)
+        parts.append(
+            {
+                "artifact_name": artifact_name,
+                "tier": tier_name,
+                "cluster_count": len(payload),
+            }
+        )
+    return {
+        "total_clusters": sum(len(items) for items in tiered_clusters.values()),
+        "parts": parts,
+    }
+
+
 def _compact_opportunity_traceability_row(item: OpportunityItem) -> dict[str, Any]:
     return {
         "opportunity_id": item.opportunity_id,
@@ -1924,6 +2049,38 @@ def _compact_opportunity_traceability_row(item: OpportunityItem) -> dict[str, An
         "brief_alignment_score": item.brief_alignment_score,
         "brief_alignment_rationale": item.brief_alignment_rationale,
         "top_pain_points": item.top_pain_points[:3],
+    }
+
+
+def _write_compact_opportunity_artifacts(
+    run_id: str,
+    opportunities: list[OpportunityItem],
+) -> dict[str, Any]:
+    compact_rows = [_compact_opportunity_traceability_row(item) for item in opportunities]
+    part_size = settings.compact_opportunity_artifact_part_size
+    max_parts = settings.compact_opportunity_artifact_max_parts
+    parts: list[dict[str, Any]] = []
+
+    for index in range(max_parts):
+        start = index * part_size
+        if start >= len(compact_rows):
+            break
+        end = None if index == max_parts - 1 else start + part_size
+        artifact_name = f"opportunity_traceability_compact_part_{index + 1}.json"
+        payload = compact_rows[start:end]
+        write_json_artifact(run_id, artifact_name, payload)
+        parts.append(
+            {
+                "artifact_name": artifact_name,
+                "part": index + 1,
+                "opportunity_count": len(payload),
+            }
+        )
+
+    return {
+        "total_opportunities": len(compact_rows),
+        "part_size": part_size,
+        "parts": parts,
     }
 
 

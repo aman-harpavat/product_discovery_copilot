@@ -14,8 +14,7 @@ def parse_iso_datetime(value: str) -> datetime:
 
 def relative_window_bounds(window_value: str, *, now: datetime | None = None) -> tuple[datetime, datetime]:
     current = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
-    number_str, unit = window_value.split("_", 1)
-    amount = int(number_str)
+    amount, unit = parse_relative_window(window_value)
 
     if unit == "days":
         start = current - timedelta(days=amount)
@@ -29,6 +28,24 @@ def relative_window_bounds(window_value: str, *, now: datetime | None = None) ->
         raise ValueError(f"Unsupported relative unit: {unit}")
 
     return start, current
+
+
+def parse_relative_window(window_value: str) -> tuple[int, str]:
+    number_str, unit = window_value.split("_", 1)
+    return int(number_str), unit
+
+
+def relative_window_months_equivalent(window_value: str) -> float:
+    amount, unit = parse_relative_window(window_value)
+    if unit == "days":
+        return max(1.0 / 30.0, amount / 30.0)
+    if unit == "weeks":
+        return max(1.0 / 4.0, amount / 4.0)
+    if unit == "months":
+        return float(amount)
+    if unit == "years":
+        return float(amount * 12)
+    raise ValueError(f"Unsupported relative unit: {unit}")
 
 
 def is_within_relative_window(value: str, window_value: str, *, now: datetime | None = None) -> bool:

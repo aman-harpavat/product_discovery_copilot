@@ -131,6 +131,33 @@ def test_analyze_feedback_accepts_custom_research_questions(monkeypatch) -> None
     ]
 
 
+def test_analyze_feedback_normalizes_country(monkeypatch) -> None:
+    from app.services import pipeline
+
+    monkeypatch.setattr(pipeline, "collect_google_play_reviews", lambda app_id: [])
+    monkeypatch.setattr(pipeline, "collect_reddit_feedback", lambda queries: [])
+    monkeypatch.setattr(pipeline, "collect_app_store_reviews", lambda app_id: [])
+    payload = valid_payload()
+    payload["country"] = "Indai"
+
+    response = client.post("/analyze-feedback", json=payload)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["locked_brief"]["country"] == "in"
+
+
+def test_analyze_feedback_rejects_unknown_country() -> None:
+    payload = valid_payload()
+    payload["country"] = "Middle Earth"
+
+    response = client.post("/analyze-feedback", json=payload)
+
+    assert response.status_code == 422
+    body = response.json()
+    assert body["status"] == "error"
+
+
 def test_analyze_feedback_rejects_missing_success_criteria(monkeypatch) -> None:
     from app.services import pipeline
 

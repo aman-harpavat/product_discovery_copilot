@@ -18,12 +18,20 @@ def valid_payload() -> dict:
         "analysis_time_window": {"type": "relative", "value": "3_months"},
         "included_topics": ["recommendations", "music discovery", "personalization"],
         "excluded_topics": ["pricing", "billing", "podcasts"],
+        "research_questions": [
+            "Why do users struggle to discover new music?",
+            "What are the most common frustrations with recommendations?",
+            "What listening behaviors are users trying to achieve?",
+            "What causes repetitive listening?",
+            "Which user segments experience different discovery challenges?",
+            "What unmet needs emerge consistently?",
+        ],
         "success_criteria": [
             "Improve meaningful music discovery",
             "Reduce repetitive listening",
             "Improve recommendation relevance and novelty balance",
         ],
-        "max_runtime_seconds": 120,
+        "max_runtime_seconds": 1800,
         "debug": False,
     }
 
@@ -103,7 +111,9 @@ def test_artifacts_are_created_and_retrievable(monkeypatch, tmp_path: Path) -> N
     assert (run_dir / "all_feedback_raw.csv").exists()
     assert (run_dir / "all_clusters.csv").exists()
     assert (run_dir / "all_clusters_compact.json").exists()
+    assert (run_dir / "all_clusters_compact_tier_1.json").exists()
     assert (run_dir / "opportunity_traceability.json").exists()
+    assert (run_dir / "opportunity_traceability_compact_part_1.json").exists()
     assert (run_dir / "segment_evidence.json").exists()
     assert (run_dir / "success_criteria_impact_mapping.json").exists()
     assert (run_dir / "quality_diagnostics.json").exists()
@@ -132,9 +142,16 @@ def test_artifacts_are_created_and_retrievable(monkeypatch, tmp_path: Path) -> N
     )
     assert compact_clusters_response.status_code == 200
     compact_clusters_payload = compact_clusters_response.json()
-    assert "tier_1" in compact_clusters_payload
-    assert "cluster_id" in compact_clusters_payload["tier_1"][0]
-    assert "representative_quote" in compact_clusters_payload["tier_1"][0]
+    assert "parts" in compact_clusters_payload
+    assert compact_clusters_payload["parts"][0]["artifact_name"] == "all_clusters_compact_tier_1.json"
+
+    compact_cluster_tier_response = client.get(
+        f"/runs/{run_id}/artifact/all_clusters_compact_tier_1.json"
+    )
+    assert compact_cluster_tier_response.status_code == 200
+    compact_cluster_tier_payload = compact_cluster_tier_response.json()
+    assert "cluster_id" in compact_cluster_tier_payload[0]
+    assert "representative_quote" in compact_cluster_tier_payload[0]
 
     traceability_response = client.get(
         f"/runs/{run_id}/artifact/opportunity_traceability.json"
@@ -216,9 +233,7 @@ def test_compact_payload_excludes_long_tail_clusters_but_artifacts_keep_all(
     )
     assert compact_artifact_response.status_code == 200
     compact_artifact_payload = compact_artifact_response.json()
-    compact_total_clusters = sum(
-        len(compact_artifact_payload[tier]) for tier in ["tier_1", "tier_2", "tier_3"]
-    )
+    compact_total_clusters = sum(part["cluster_count"] for part in compact_artifact_payload["parts"])
     assert compact_total_clusters == 25
 
 
@@ -267,3 +282,77 @@ def test_final_report_can_be_saved_and_retrieved(monkeypatch, tmp_path: Path) ->
         item["name"] == "final_report.md"
         for item in manifest_response.json()["artifacts"]
     )
+
+
+def test_async_start_and_status_flow(monkeypatch, tmp_path: Path) -> None:
+    from app.collectors.google_play import normalize_google_play_review
+    from app.config import settings
+    from app.services import pipeline
+
+    monkeypatch.setattr(settings, "runs_dir_path", str(tmp_path / "runs"))
+    monkeypatch.setattr(
+        pipeline,
+        "collect_google_play_reviews",
+        lambda app_id: [
+            normalize_google_play_review(
+                {
+                    "reviewId": "gp_async_1",
+                    "content": "Spotify keeps surfacing the same music in Discover Weekly.",
+                    "score": 2,
+                    "thumbsUpCount": 1,
+                    "at": datetime(2026, 5, 1, 12, 0, 0),
+                    "reviewCreatedVersion": "9.0.0",
+                }
+            )
+        ],
+    )
+    monkeypatch.setattr(pipeline, "collect_reddit_feedback", lambda queries: [])
+    monkeypatch.setattr(pipeline, "collect_app_store_reviews", lambda app_id: [])
+
+    start_response = client.post("/analyze-feedback/start", json=valid_payload())
+    assert start_response.status_code == 200
+    started = start_response.json()
+    assert started["run_id"].startswith("run_")
+    assert started["status"] in {"queued", "running", "completed", "partial_success"}
+    assert started["estimated_seconds_remaining"] >= 0
+
+    run_id = started["run_id"]
+    status_response = client.get(f"/runs/{run_id}/status?wait_seconds=1")
+    assert status_response.status_code == 200
+    status_payload = status_response.json()
+    assert status_payload["run_id"] == run_id
+    assert status_payload["status"] in {"running", "completed", "partial_success"}
+
+
+def test_latest_run_status_returns_most_recent_async_run(monkeypatch, tmp_path: Path) -> None:
+    from app.collectors.google_play import normalize_google_play_review
+    from app.config import settings
+    from app.services import pipeline
+
+    monkeypatch.setattr(settings, "runs_dir_path", str(tmp_path / "runs"))
+    monkeypatch.setattr(
+        pipeline,
+        "collect_google_play_reviews",
+        lambda app_id: [
+            normalize_google_play_review(
+                {
+                    "reviewId": "gp_latest_1",
+                    "content": "Spotify recommendations need better novelty.",
+                    "score": 3,
+                    "thumbsUpCount": 1,
+                    "at": datetime(2026, 5, 2, 12, 0, 0),
+                    "reviewCreatedVersion": "9.0.0",
+                }
+            )
+        ],
+    )
+    monkeypatch.setattr(pipeline, "collect_reddit_feedback", lambda queries: [])
+    monkeypatch.setattr(pipeline, "collect_app_store_reviews", lambda app_id: [])
+
+    start_response = client.post("/analyze-feedback/start", json=valid_payload())
+    run_id = start_response.json()["run_id"]
+
+    latest_response = client.get("/runs/latest/status?wait_seconds=1")
+    assert latest_response.status_code == 200
+    latest_payload = latest_response.json()
+    assert latest_payload["run_id"] == run_id

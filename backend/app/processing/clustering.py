@@ -4,10 +4,9 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass
 
 import numpy as np
-from sklearn.cluster import AgglomerativeClustering
 from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS, TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
 from scipy import sparse
+from scipy.sparse.csgraph import connected_components
 
 from app.processing.cleaner import normalize_text
 from app.processing.relevance import (
@@ -30,14 +29,18 @@ DOMAIN_STOP_WORDS = {
     "app",
 }
 
-MERGE_SIMILARITY_THRESHOLD = 0.15
-SINGLETON_ATTACH_THRESHOLD = 0.11
+EDGE_SIMILARITY_THRESHOLD = 0.16
+OPPOSING_SIGNAL_EDGE_THRESHOLD = 0.17
+MERGE_SIMILARITY_THRESHOLD = 0.13
+SINGLETON_ATTACH_THRESHOLD = 0.10
 MIN_THEME_OVERLAP = 1
 
 
 @dataclass
 class _WorkingCluster:
     member_indexes: list[int]
+    keyword_set: set[str]
+    dominant_signal: str
 
 
 def cluster_feedback_items(
@@ -51,22 +54,16 @@ def cluster_feedback_items(
     if len(feedback_items) == 1:
         return [_build_cluster(feedback_items, 0)], []
 
-    texts = [normalize_text(item.text).lower() for item in feedback_items]
+    texts = [normalize_text(item.text).lower() or "general discovery feedback" for item in feedback_items]
     vectorizer = TfidfVectorizer(ngram_range=(1, 2), min_df=1, stop_words="english")
     matrix = vectorizer.fit_transform(texts)
-
-    dense_matrix = matrix.toarray()
-    labels = _cluster_labels(dense_matrix)
-    similarity_matrix = np.nan_to_num(
-        cosine_similarity(matrix),
-        nan=0.0,
-        posinf=0.0,
-        neginf=0.0,
-    )
+    similarity_matrix = _similarity_matrix(matrix)
+    labels = _cluster_labels(feedback_items, similarity_matrix)
     working_clusters = _merge_cluster_groups(
         labels,
         feedback_items,
-        dense_matrix,
+        vectorizer,
+        matrix,
         similarity_matrix,
     )
 
@@ -98,145 +95,226 @@ def cluster_feedback_items(
 
     return clusters, debug_notes
 
-
-def _cluster_labels(matrix: np.ndarray) -> np.ndarray:
-    n_items = len(matrix)
+def _cluster_labels(
+    items: list[RawFeedbackItem],
+    similarity_matrix: sparse.csr_matrix,
+) -> np.ndarray:
+    n_items = len(items)
     if n_items == 1:
-        return np.array([0])
+        return np.array([0], dtype=int)
     if n_items == 2:
-        similarity = cosine_similarity(matrix)[0][1]
-        if similarity >= 0.12:
-            return np.array([0, 0])
-        return np.arange(n_items)
+        similarity = _pair_similarity(similarity_matrix, 0, 1)
+        if similarity >= 0.17 or _record_edge_allowed(items[0], items[1], similarity):
+            return np.array([0, 0], dtype=int)
+        return np.arange(n_items, dtype=int)
 
-    model = AgglomerativeClustering(
-        metric="cosine",
-        linkage="average",
-        distance_threshold=0.8,
-        n_clusters=None,
-    )
-    labels = model.fit_predict(matrix)
-
-    # If the threshold yields a single huge cluster for 3+ items, force a small split.
-    if len(set(labels.tolist())) == 1 and n_items >= 4:
-        forced_clusters = min(3, max(2, n_items // 2))
-        model = AgglomerativeClustering(
-            metric="cosine",
-            linkage="average",
-            n_clusters=forced_clusters,
-        )
-        labels = model.fit_predict(matrix)
-
+    adjacency = _threshold_similarity_graph(items, similarity_matrix)
+    _, labels = connected_components(adjacency, directed=False, return_labels=True)
     return labels
 
 
 def _merge_cluster_groups(
     labels: np.ndarray,
     items: list[RawFeedbackItem],
-    matrix: np.ndarray,
-    similarity_matrix: np.ndarray,
+    vectorizer: TfidfVectorizer,
+    matrix: sparse.csr_matrix,
+    similarity_matrix: sparse.csr_matrix,
 ) -> list[_WorkingCluster]:
     grouped: dict[int, list[int]] = defaultdict(list)
     for index, label in enumerate(labels):
         grouped[int(label)].append(index)
 
-    clusters = [_WorkingCluster(member_indexes=indexes[:]) for _, indexes in sorted(grouped.items())]
-    changed = True
-    while changed and len(clusters) > 1:
-        changed = False
-        best_pair: tuple[int, int] | None = None
-        best_score = -1.0
-        for left in range(len(clusters)):
-            for right in range(left + 1, len(clusters)):
-                score = _cluster_pair_similarity(
-                    clusters[left],
-                    clusters[right],
-                    items,
-                    matrix,
-                    similarity_matrix,
-                )
-                if score > best_score:
-                    best_score = score
-                    best_pair = (left, right)
-        if best_pair and best_score >= MERGE_SIMILARITY_THRESHOLD:
-            left, right = best_pair
-            merged = sorted(
-                clusters[left].member_indexes + clusters[right].member_indexes
-            )
-            clusters[left] = _WorkingCluster(member_indexes=merged)
-            del clusters[right]
-            changed = True
+    clusters = [
+        _make_working_cluster(indexes, items, vectorizer, matrix)
+        for _, indexes in sorted(grouped.items())
+    ]
+    clusters = _attach_targeted_singletons(
+        clusters,
+        items,
+        vectorizer,
+        matrix,
+        similarity_matrix,
+    )
+
+    return sorted(
+        clusters,
+        key=lambda cluster: (-len(cluster.member_indexes), cluster.member_indexes[0]),
+    )
+
+
+def _cluster_pair_similarity(
+    left: _WorkingCluster,
+    right: _WorkingCluster,
+    similarity_matrix: sparse.csr_matrix,
+) -> float:
+    left_indexes = left.member_indexes
+    right_indexes = right.member_indexes
+    avg_similarity = _average_cross_similarity(similarity_matrix, left_indexes, right_indexes)
+
+    overlap = len(left.keyword_set & right.keyword_set)
+    overlap_bonus = 0.05 * min(overlap, 3) if overlap >= MIN_THEME_OVERLAP else 0.0
+
+    same_signal_bonus = 0.04 if left.dominant_signal == right.dominant_signal else 0.0
+    left_repeat_terms = _repeat_theme_terms(left.keyword_set)
+    right_repeat_terms = _repeat_theme_terms(right.keyword_set)
+    repeat_overlap = len(left_repeat_terms & right_repeat_terms)
+    thematic_bonus = 0.08 if repeat_overlap >= 1 else 0.0
+    same_repeat_family_bonus = 0.09 if left_repeat_terms and right_repeat_terms else 0.0
+    opposing_penalty = 0.08 if _signals_are_opposed(left.dominant_signal, right.dominant_signal) else 0.0
+    return (
+        avg_similarity
+        + overlap_bonus
+        + same_signal_bonus
+        + thematic_bonus
+        + same_repeat_family_bonus
+        - opposing_penalty
+    )
+
+
+def _attach_targeted_singletons(
+    clusters: list[_WorkingCluster],
+    items: list[RawFeedbackItem],
+    vectorizer: TfidfVectorizer,
+    matrix: sparse.csr_matrix,
+    similarity_matrix: sparse.csr_matrix,
+) -> list[_WorkingCluster]:
+    if not clusters:
+        return clusters
+
+    cluster_by_item: dict[int, int] = {}
+    keyword_index: defaultdict[str, set[int]] = defaultdict(set)
+    repeat_index: defaultdict[str, set[int]] = defaultdict(set)
+    active_clusters: set[int] = set()
+
+    def register(cluster_index: int) -> None:
+        cluster = clusters[cluster_index]
+        active_clusters.add(cluster_index)
+        for item_index in cluster.member_indexes:
+            cluster_by_item[item_index] = cluster_index
+        for keyword in cluster.keyword_set:
+            keyword_index[keyword].add(cluster_index)
+        for repeat_term in _repeat_theme_terms(cluster.keyword_set):
+            repeat_index[repeat_term].add(cluster_index)
+
+    def unregister(cluster_index: int) -> None:
+        if cluster_index not in active_clusters:
+            return
+        cluster = clusters[cluster_index]
+        active_clusters.discard(cluster_index)
+        for item_index in cluster.member_indexes:
+            cluster_by_item.pop(item_index, None)
+        for keyword in cluster.keyword_set:
+            keyword_index[keyword].discard(cluster_index)
+            if not keyword_index[keyword]:
+                keyword_index.pop(keyword, None)
+        for repeat_term in _repeat_theme_terms(cluster.keyword_set):
+            repeat_index[repeat_term].discard(cluster_index)
+            if not repeat_index[repeat_term]:
+                repeat_index.pop(repeat_term, None)
+
+    for cluster_index in range(len(clusters)):
+        register(cluster_index)
 
     singleton_indexes = [
         cluster_index
         for cluster_index, cluster in enumerate(clusters)
         if len(cluster.member_indexes) == 1
     ]
-    for cluster_index in sorted(singleton_indexes, reverse=True):
+
+    for cluster_index in singleton_indexes:
+        if cluster_index not in active_clusters:
+            continue
         singleton = clusters[cluster_index]
+        candidate_indexes = _candidate_cluster_indexes(
+            singleton,
+            cluster_index,
+            clusters,
+            cluster_by_item,
+            keyword_index,
+            repeat_index,
+            similarity_matrix,
+        )
+        if not candidate_indexes:
+            continue
+
         best_target = None
         best_score = -1.0
-        for target_index, candidate in enumerate(clusters):
-            if target_index == cluster_index:
-                continue
+        for target_index in candidate_indexes:
             score = _cluster_pair_similarity(
                 singleton,
-                candidate,
-                items,
-                matrix,
+                clusters[target_index],
                 similarity_matrix,
             )
             if score > best_score:
                 best_score = score
                 best_target = target_index
-        if best_target is not None and best_score >= SINGLETON_ATTACH_THRESHOLD:
-            target_members = sorted(
-                clusters[best_target].member_indexes + singleton.member_indexes
-            )
-            clusters[best_target] = _WorkingCluster(member_indexes=target_members)
-            del clusters[cluster_index]
 
-    return sorted(clusters, key=lambda cluster: (-len(cluster.member_indexes), cluster.member_indexes[0]))
+        if best_target is None or best_score < SINGLETON_ATTACH_THRESHOLD:
+            continue
+
+        merged_members = sorted(
+            clusters[best_target].member_indexes + singleton.member_indexes
+        )
+        unregister(best_target)
+        unregister(cluster_index)
+        clusters[best_target] = _make_working_cluster(
+            merged_members,
+            items,
+            vectorizer,
+            matrix,
+        )
+        register(best_target)
+
+    return [clusters[index] for index in sorted(active_clusters)]
 
 
-def _cluster_pair_similarity(
-    left: _WorkingCluster,
-    right: _WorkingCluster,
+def _candidate_cluster_indexes(
+    singleton: _WorkingCluster,
+    cluster_index: int,
+    clusters: list[_WorkingCluster],
+    cluster_by_item: dict[int, int],
+    keyword_index: dict[str, set[int]],
+    repeat_index: dict[str, set[int]],
+    similarity_matrix: sparse.csr_matrix,
+) -> list[int]:
+    item_index = singleton.member_indexes[0]
+    candidates: set[int] = set()
+
+    row = similarity_matrix.getrow(item_index)
+    neighbor_order = np.argsort(row.data)[::-1] if row.data.size else np.array([], dtype=int)
+    for position in neighbor_order[:15]:
+        neighbor_item = int(row.indices[position])
+        target_cluster_index = cluster_by_item.get(neighbor_item)
+        if target_cluster_index is None or target_cluster_index == cluster_index:
+            continue
+        candidates.add(target_cluster_index)
+
+    for keyword in singleton.keyword_set:
+        for target_cluster_index in keyword_index.get(keyword, set()):
+            if target_cluster_index != cluster_index:
+                candidates.add(target_cluster_index)
+
+    for repeat_term in _repeat_theme_terms(singleton.keyword_set):
+        for target_cluster_index in repeat_index.get(repeat_term, set()):
+            if target_cluster_index != cluster_index:
+                candidates.add(target_cluster_index)
+
+    return sorted(candidates, key=lambda index: (-len(clusters[index].member_indexes), index))
+
+
+def _make_working_cluster(
+    member_indexes: list[int],
     items: list[RawFeedbackItem],
-    matrix: np.ndarray,
-    similarity_matrix: np.ndarray,
-) -> float:
-    left_indexes = left.member_indexes
-    right_indexes = right.member_indexes
-    pairwise = similarity_matrix[np.ix_(left_indexes, right_indexes)]
-    avg_similarity = float(pairwise.mean()) if pairwise.size else 0.0
-
-    left_keywords = set(_surface_terms([items[index].text for index in left_indexes]))
-    right_keywords = set(_surface_terms([items[index].text for index in right_indexes]))
-    overlap = len(left_keywords & right_keywords)
-    overlap_bonus = 0.05 * min(overlap, 3) if overlap >= MIN_THEME_OVERLAP else 0.0
-
-    same_signal_bonus = 0.04 if _dominant_item_signal(items, left_indexes) == _dominant_item_signal(items, right_indexes) else 0.0
-    thematic_bonus = 0.08 if _shares_repeat_theme(items, left_indexes, right_indexes) else 0.0
-    return avg_similarity + overlap_bonus + same_signal_bonus + thematic_bonus
-
-
-def _surface_terms(texts: list[str]) -> list[str]:
-    vectorizer = TfidfVectorizer(ngram_range=(1, 2), min_df=1, stop_words="english")
-    matrix = vectorizer.fit_transform(texts)
-    scores = np.asarray(matrix.mean(axis=0)).ravel()
-    features = vectorizer.get_feature_names_out()
-    ranked: list[str] = []
-    for index in np.argsort(scores)[::-1]:
-        term = features[index]
-        if term in ENGLISH_STOP_WORDS or term in DOMAIN_STOP_WORDS:
-            continue
-        if any(stop in term.split() for stop in DOMAIN_STOP_WORDS):
-            continue
-        ranked.append(term)
-        if len(ranked) == 6:
-            break
-    return ranked
+    vectorizer: TfidfVectorizer,
+    matrix: sparse.csr_matrix,
+) -> _WorkingCluster:
+    keywords = set(_cluster_terms_from_indexes(member_indexes, vectorizer, matrix, limit=6))
+    dominant_signal = _dominant_item_signal(items, member_indexes)
+    return _WorkingCluster(
+        member_indexes=member_indexes,
+        keyword_set=keywords,
+        dominant_signal=dominant_signal,
+    )
 
 
 def _dominant_item_signal(items: list[RawFeedbackItem], indexes: list[int]) -> str:
@@ -244,12 +322,69 @@ def _dominant_item_signal(items: list[RawFeedbackItem], indexes: list[int]) -> s
     return _dominant_signal(counts)
 
 
-def _shares_repeat_theme(
+def _similarity_matrix(matrix: sparse.csr_matrix) -> sparse.csr_matrix:
+    similarity = (matrix @ matrix.T).tocsr()
+    similarity.setdiag(0.0)
+    similarity.eliminate_zeros()
+    return similarity
+
+
+def _threshold_similarity_graph(
     items: list[RawFeedbackItem],
+    similarity_matrix: sparse.csr_matrix,
+) -> sparse.csr_matrix:
+    coo = similarity_matrix.tocoo()
+    rows: list[int] = []
+    cols: list[int] = []
+    data: list[float] = []
+    for row, col, value in zip(coo.row, coo.col, coo.data):
+        if row >= col:
+            continue
+        score = float(value)
+        if _record_edge_allowed(items[row], items[col], score):
+            rows.extend([row, col])
+            cols.extend([col, row])
+            data.extend([1.0, 1.0])
+    size = len(items)
+    if not rows:
+        return sparse.identity(size, dtype=float, format="csr")
+    graph = sparse.csr_matrix((data, (rows, cols)), shape=(size, size))
+    graph = graph + sparse.identity(size, dtype=float, format="csr")
+    graph.eliminate_zeros()
+    return graph
+
+
+def _record_edge_allowed(left: RawFeedbackItem, right: RawFeedbackItem, similarity: float) -> bool:
+    left_signal = classify_evidence_signal(left)
+    right_signal = classify_evidence_signal(right)
+    threshold = EDGE_SIMILARITY_THRESHOLD
+    if _signals_are_opposed(left_signal, right_signal):
+        threshold = OPPOSING_SIGNAL_EDGE_THRESHOLD
+    return similarity >= threshold
+
+
+def _signals_are_opposed(left_signal: str, right_signal: str) -> bool:
+    return {left_signal, right_signal} == {"pain", "positive"}
+
+
+def _pair_similarity(similarity_matrix: sparse.csr_matrix, left: int, right: int) -> float:
+    return float(similarity_matrix[left, right])
+
+
+def _average_cross_similarity(
+    similarity_matrix: sparse.csr_matrix,
     left_indexes: list[int],
     right_indexes: list[int],
-) -> bool:
-    theme_terms = [
+) -> float:
+    cross = similarity_matrix[left_indexes][:, right_indexes]
+    comparisons = cross.shape[0] * cross.shape[1]
+    if comparisons == 0:
+        return 0.0
+    return float(cross.sum()) / comparisons
+
+
+def _repeat_theme_terms(keywords: set[str]) -> set[str]:
+    theme_markers = {
         "recommend",
         "discover weekly",
         "repet",
@@ -257,23 +392,20 @@ def _shares_repeat_theme(
         "same artists",
         "fresh",
         "variety",
-    ]
-    left_text = " ".join(items[index].text.lower() for index in left_indexes)
-    right_text = " ".join(items[index].text.lower() for index in right_indexes)
-    left_matches = sum(1 for term in theme_terms if term in left_text)
-    right_matches = sum(1 for term in theme_terms if term in right_text)
-    return left_matches >= 2 and right_matches >= 2
+        "novelty",
+        "release radar",
+    }
+    matched: set[str] = set()
+    for keyword in keywords:
+        if any(marker in keyword for marker in theme_markers):
+            matched.add(keyword)
+    return matched
 
 
 def _cluster_cohesion_score(cluster_vectors: sparse.spmatrix) -> float:
     if cluster_vectors.shape[0] <= 1:
         return 0.0
-    similarity = np.nan_to_num(
-        cosine_similarity(cluster_vectors),
-        nan=0.0,
-        posinf=0.0,
-        neginf=0.0,
-    )
+    similarity = (cluster_vectors @ cluster_vectors.T).toarray()
     upper_triangle = similarity[np.triu_indices(cluster_vectors.shape[0], k=1)]
     if upper_triangle.size == 0:
         return 0.0
@@ -323,12 +455,38 @@ def _cluster_keywords(
     vectorizer: TfidfVectorizer | None = None,
 ) -> list[str]:
     texts = [normalize_text(item.text).lower() for item in items]
-    local_vectorizer = vectorizer or TfidfVectorizer(
-        ngram_range=(1, 2), min_df=1, stop_words="english"
-    )
-    matrix = local_vectorizer.fit_transform(texts)
+    if vectorizer is None:
+        local_vectorizer = TfidfVectorizer(
+            ngram_range=(1, 2), min_df=1, stop_words="english"
+        )
+        matrix = local_vectorizer.fit_transform(texts)
+        return _rank_terms_from_matrix(matrix, local_vectorizer, limit=3)
+
+    matrix = vectorizer.transform(texts)
+    return _rank_terms_from_matrix(matrix, vectorizer, limit=3)
+
+
+def _cluster_terms_from_indexes(
+    indexes: list[int],
+    vectorizer: TfidfVectorizer,
+    matrix: sparse.csr_matrix,
+    *,
+    limit: int,
+) -> list[str]:
+    subset = matrix[indexes]
+    return _rank_terms_from_matrix(subset, vectorizer, limit=limit)
+
+
+def _rank_terms_from_matrix(
+    matrix: sparse.spmatrix,
+    vectorizer: TfidfVectorizer,
+    *,
+    limit: int,
+) -> list[str]:
+    if matrix.shape[1] == 0:
+        return ["general discovery"]
     scores = np.asarray(matrix.mean(axis=0)).ravel()
-    features = local_vectorizer.get_feature_names_out()
+    features = vectorizer.get_feature_names_out()
 
     ranked: list[str] = []
     for index in np.argsort(scores)[::-1]:
@@ -338,7 +496,7 @@ def _cluster_keywords(
         if any(stop in term.split() for stop in DOMAIN_STOP_WORDS):
             continue
         ranked.append(term)
-        if len(ranked) == 3:
+        if len(ranked) == limit:
             break
 
     return ranked or ["general discovery"]

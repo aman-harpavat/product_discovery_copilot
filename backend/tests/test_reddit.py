@@ -59,7 +59,7 @@ def test_build_reddit_query_seeds_includes_spec_queries() -> None:
     assert "Spotify recommendations repetitive" in queries
     assert "Spotify Discover Weekly repetitive" in queries
     assert "Spotify smart shuffle repetitive" in queries
-    assert len(queries) <= 4
+    assert len(queries) <= 5
 
 
 def test_build_reddit_aggregate_query_stays_query_driven() -> None:

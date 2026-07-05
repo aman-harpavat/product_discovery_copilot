@@ -99,3 +99,16 @@ def test_collect_google_play_reviews_pages_until_cap_or_exhaustion() -> None:
         "fb_google_play_gp_2",
     ]
     assert calls == [None, "token_2"]
+
+
+def test_collect_google_play_reviews_can_run_without_explicit_country() -> None:
+    seen_kwargs: dict[str, object] = {}
+
+    def _countryless_fetcher(**kwargs):
+        seen_kwargs.update(kwargs)
+        return ([], None)
+
+    collect_google_play_reviews(country=None, fetcher=_countryless_fetcher)
+
+    assert "country" in seen_kwargs
+    assert seen_kwargs["country"] is None

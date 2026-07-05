@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import FileResponse, JSONResponse
@@ -16,9 +16,11 @@ from app.schemas import (
     ArtifactManifest,
     ErrorResponse,
     HealthResponse,
+    RunStatusResponse,
 )
 from app.services.artifacts import ARTIFACT_DEFINITIONS, artifact_path, build_artifact_manifest
 from app.services.pipeline import build_mock_analysis_response
+from app.services.run_manager import get_latest_run_status, get_run_status, start_analysis_run
 
 configure_logging()
 
@@ -103,6 +105,43 @@ async def analyze_feedback(
     request: AnalyzeFeedbackRequest,
 ) -> AnalyzeFeedbackResponse:
     return build_mock_analysis_response(request)
+
+
+@app.post(
+    "/analyze-feedback/start",
+    response_model=RunStatusResponse,
+    responses={
+        422: {
+            "model": ErrorResponse,
+            "description": "Request validation failed",
+        }
+    },
+)
+async def start_analyze_feedback(
+    request: AnalyzeFeedbackRequest,
+) -> RunStatusResponse:
+    return start_analysis_run(request)
+
+
+@app.get("/runs/latest/status", response_model=RunStatusResponse)
+async def get_latest_analysis_run_status(
+    wait_seconds: int = Query(default=0, ge=0, le=40),
+) -> RunStatusResponse:
+    try:
+        return get_latest_run_status(wait_seconds=wait_seconds)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Run not found") from None
+
+
+@app.get("/runs/{run_id}/status", response_model=RunStatusResponse)
+async def get_analysis_run_status(
+    run_id: str,
+    wait_seconds: int = Query(default=0, ge=0, le=40),
+) -> RunStatusResponse:
+    try:
+        return get_run_status(run_id, wait_seconds=wait_seconds)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Run not found") from None
 
 
 @app.get("/runs/{run_id}/manifest", response_model=ArtifactManifest)

@@ -27,11 +27,47 @@ ARTIFACT_DEFINITIONS: dict[str, tuple[str, str]] = {
     ),
     "all_clusters_compact.json": (
         "application/json",
-        "GPT-safe compact cluster payload with all clusters preserved in a reduced transport-friendly shape.",
+        "Index for GPT-safe compact cluster shard artifacts.",
+    ),
+    "all_clusters_compact_tier_1.json": (
+        "application/json",
+        "GPT-safe compact cluster shard for tier 1 clusters.",
+    ),
+    "all_clusters_compact_tier_2.json": (
+        "application/json",
+        "GPT-safe compact cluster shard for tier 2 clusters.",
+    ),
+    "all_clusters_compact_tier_3.json": (
+        "application/json",
+        "GPT-safe compact cluster shard for tier 3 clusters.",
     ),
     "opportunity_traceability_compact.json": (
         "application/json",
-        "GPT-safe compact opportunity traceability payload with ranking-ready summaries.",
+        "Index for GPT-safe compact opportunity traceability shard artifacts.",
+    ),
+    "opportunity_traceability_compact_part_1.json": (
+        "application/json",
+        "GPT-safe compact opportunity traceability shard 1.",
+    ),
+    "opportunity_traceability_compact_part_2.json": (
+        "application/json",
+        "GPT-safe compact opportunity traceability shard 2.",
+    ),
+    "opportunity_traceability_compact_part_3.json": (
+        "application/json",
+        "GPT-safe compact opportunity traceability shard 3.",
+    ),
+    "opportunity_traceability_compact_part_4.json": (
+        "application/json",
+        "GPT-safe compact opportunity traceability shard 4.",
+    ),
+    "opportunity_traceability_compact_part_5.json": (
+        "application/json",
+        "GPT-safe compact opportunity traceability shard 5.",
+    ),
+    "opportunity_traceability_compact_part_6.json": (
+        "application/json",
+        "GPT-safe compact opportunity traceability shard 6.",
     ),
     "success_criteria_impact_mapping_compact.json": (
         "application/json",
@@ -76,6 +112,10 @@ ARTIFACT_DEFINITIONS: dict[str, tuple[str, str]] = {
     "processing_notes.md": (
         "text/markdown",
         "Processing notes, warnings, and source limitations recorded for the run.",
+    ),
+    "run.log": (
+        "text/plain",
+        "Run-specific execution log written fresh for this run only.",
     ),
     "final_report.md": (
         "text/markdown",

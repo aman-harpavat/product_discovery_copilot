@@ -1,5 +1,7 @@
 from xml.etree import ElementTree
 
+import httpx
+
 from app.collectors.app_store import (
     APP_STORE_NS,
     build_app_store_reviews_url,
@@ -109,3 +111,31 @@ def test_collect_app_store_reviews_pages_until_limit() -> None:
         "fb_app_store_2002",
     ]
     assert any("page=2/" in url for url in seen_urls)
+
+
+def test_collect_app_store_reviews_preserves_partial_results_on_pagination_boundary() -> None:
+    seen_urls: list[str] = []
+
+    def _boundary_fetcher(url: str) -> str:
+        seen_urls.append(url)
+        if "page=11/" in url:
+            request = httpx.Request("GET", url)
+            response = httpx.Response(400, request=request)
+            raise httpx.HTTPStatusError(
+                "boundary",
+                request=request,
+                response=response,
+            )
+        page_number = 1
+        if "page=" in url:
+            page_number = int(url.split("page=")[1].split("/")[0])
+        return APP_STORE_FEED.replace("reviewId=1001", f"reviewId={1000 + page_number}")
+
+    records = collect_app_store_reviews(
+        limit=None,
+        max_pages=12,
+        fetcher=_boundary_fetcher,
+    )
+
+    assert len(records) == 10
+    assert any("page=11/" in url for url in seen_urls)
