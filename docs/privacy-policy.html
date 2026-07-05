@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Privacy Policy | AI Product Discovery Copilot</title>
+  <style>
+    :root {
+      --bg: #f6f3ea;
+      --paper: #fffdf8;
+      --text: #1f2328;
+      --muted: #5a6573;
+      --line: #d9d2c3;
+      --accent: #0f766e;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Georgia, "Times New Roman", serif;
+      background: linear-gradient(180deg, #efe9dc 0%, var(--bg) 100%);
+      color: var(--text);
+      line-height: 1.65;
+    }
+
+    main {
+      max-width: 860px;
+      margin: 48px auto;
+      padding: 0 20px;
+    }
+
+    article {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      padding: 40px 32px;
+      box-shadow: 0 18px 40px rgba(31, 35, 40, 0.08);
+    }
+
+    h1, h2 {
+      font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+      line-height: 1.2;
+      letter-spacing: -0.02em;
+      margin-top: 0;
+    }
+
+    h1 {
+      font-size: 2.3rem;
+      margin-bottom: 8px;
+    }
+
+    h2 {
+      font-size: 1.2rem;
+      margin-top: 32px;
+      margin-bottom: 10px;
+      color: var(--accent);
+    }
+
+    p, li {
+      font-size: 1rem;
+    }
+
+    .meta {
+      color: var(--muted);
+      margin-bottom: 28px;
+    }
+
+    ul, ol {
+      padding-left: 22px;
+    }
+
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      background: #f2eee5;
+      padding: 2px 6px;
+      border-radius: 6px;
+      font-size: 0.95em;
+    }
+
+    a {
+      color: var(--accent);
+    }
+
+    @media (max-width: 640px) {
+      main {
+        margin: 20px auto;
+        padding: 0 12px;
+      }
+
+      article {
+        padding: 24px 18px;
+        border-radius: 16px;
+      }
+
+      h1 {
+        font-size: 1.8rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <article>
+      <h1>Privacy Policy</h1>
+      <p class="meta">Last updated: July 6, 2026</p>
+
+      <p>This Privacy Policy explains how the AI Product Discovery Copilot and its supporting backend handle data when you use the public GPT and its connected API.</p>
+
+      <h2>Who We Are</h2>
+      <p>AI Product Discovery Copilot is a research workflow that helps analyze public customer feedback for product discovery and opportunity analysis.</p>
+      <p>If you publish this GPT publicly, the contact details for this implementation are:</p>
+      <ul>
+        <li>Contact email: <a href="mailto:amanharpavatdev@gmail.com">amanharpavatdev@gmail.com</a></li>
+        <li>Maintainer: Aman Harpavat</li>
+      </ul>
+
+      <h2>What This GPT Does</h2>
+      <p>When you use this GPT:</p>
+      <ol>
+        <li>You provide a research brief in natural language.</li>
+        <li>The GPT may ask follow-up questions to lock the brief.</li>
+        <li>After your approval, the GPT sends the locked brief to a backend API.</li>
+        <li>The backend collects publicly available feedback from supported sources such as Google Play reviews, Apple App Store reviews, and Reddit public discussions.</li>
+        <li>The backend processes that public feedback and returns structured evidence for report generation.</li>
+      </ol>
+
+      <h2>Data We Receive From You</h2>
+      <p>The GPT and backend may receive:</p>
+      <ul>
+        <li>your research prompt</li>
+        <li>follow-up clarifications</li>
+        <li>locked brief fields such as product, research scope, research goal, time window, included topics, excluded topics, research questions, success criteria, and optional country</li>
+      </ul>
+      <p>Please do not submit sensitive personal data, secrets, passwords, payment data, or health information in your prompt.</p>
+
+      <h2>Public Data We Collect</h2>
+      <p>The backend collects and processes only publicly accessible feedback from supported external sources. This may include review text, timestamps, ratings, public URLs, and publicly visible engagement signals such as likes or comment counts.</p>
+      <p>We use this public data only to generate research evidence, summaries, clusters, metrics, and reports for the requested analysis.</p>
+
+      <h2>How We Use Data</h2>
+      <p>We use data to:</p>
+      <ul>
+        <li>validate and lock the research brief</li>
+        <li>run the requested analysis</li>
+        <li>collect and process public feedback</li>
+        <li>generate evidence artifacts and research outputs</li>
+        <li>debug failures and improve reliability</li>
+      </ul>
+      <p>We do not use the GPT workflow to sell your data.</p>
+
+      <h2>Storage and Retention</h2>
+      <p>The backend stores temporary run artifacts and logs so that the GPT can retrieve evidence files during analysis. These files may include raw and cleaned feedback extracts, clusters and summaries, charts and diagnostics, processing notes, and run logs.</p>
+      <p>Run artifacts are temporary and are automatically deleted after a retention window configured by the service operator.</p>
+      <p>Current default retention in this implementation:</p>
+      <ul>
+        <li>old completed, partial-success, or failed runs are automatically deleted after approximately 24 hours</li>
+        <li>active runs are not deleted while still queued or running</li>
+      </ul>
+
+      <h2>Sharing</h2>
+      <p>Your brief data is shared only with the systems required to operate this workflow:</p>
+      <ul>
+        <li>OpenAI, through the Custom GPT and Actions platform</li>
+        <li>the hosted backend service for this project</li>
+        <li>external public platforms only to the extent required to retrieve public feedback</li>
+      </ul>
+      <p>We do not intentionally sell personal data to third parties.</p>
+
+      <h2>Limitations and External Sources</h2>
+      <p>This workflow depends on public third-party platforms. Those services may rate limit requests, block public access, or return incomplete or changing results. As a result, outputs may rely on partial source coverage, and source limitations are disclosed in the generated analysis.</p>
+
+      <h2>Security</h2>
+      <p>We take reasonable steps to reduce unnecessary data retention and limit access to known backend artifacts. However, no internet-connected system can be guaranteed to be perfectly secure.</p>
+
+      <h2>Your Choices</h2>
+      <p>You can choose not to submit any prompt.</p>
+      <p>You should avoid including:</p>
+      <ul>
+        <li>personal secrets</li>
+        <li>credentials</li>
+        <li>confidential company data</li>
+        <li>regulated personal data</li>
+      </ul>
+      <p>If you are the operator of this GPT and backend, you should provide a contact email for privacy or deletion requests.</p>
+
+      <h2>Changes to This Policy</h2>
+      <p>We may update this Privacy Policy over time. The latest version should remain available at the public policy URL linked from the GPT.</p>
+    </article>
+  </main>
+</body>
+</html>
