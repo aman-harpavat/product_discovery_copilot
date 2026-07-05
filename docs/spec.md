@@ -94,15 +94,19 @@ Custom GPT + Hosted Backend Action/API.
 3. GPT identifies missing/implicit fields:
    - product = Spotify
    - research_scope = Music Discovery
-   - research_goal = Opportunity Discovery
-   - analysis_time_window = ask user or default to last 12 months with confirmation
+   - research_goal = infer and confirm
+   - analysis_time_window = ask user if missing
    - included_topics = infer and confirm
    - excluded_topics = infer and confirm
-4. GPT asks targeted clarifying question if any field is missing or ambiguous.
-5. Once locked, GPT calls backend endpoint `/analyze-feedback`.
-6. Backend collects and processes public feedback.
-7. Backend returns structured response.
-8. GPT generates report and validation briefs using only backend evidence.
+   - research_questions = infer and confirm
+   - success_criteria = infer and confirm
+4. GPT asks only the minimum targeted clarifying question(s) needed for missing or ambiguous fields.
+5. GPT presents the full locked brief and asks the user to reply `go ahead` or edit any field.
+6. If the user changes something, GPT updates the locked brief and confirms it again.
+7. Only after explicit user approval does GPT call backend endpoint `/analyze-feedback/start`.
+8. Backend collects and processes public feedback.
+9. Backend returns structured response.
+10. GPT generates report and validation briefs using only backend evidence.
 
 ---
 
@@ -160,7 +164,14 @@ ai-product-discovery-copilot/
 
 ## 5. API Contract
 
-### Endpoint
+### Primary async endpoints
+- `POST /analyze-feedback/start`
+- `GET /runs/{run_id}/status`
+- `GET /runs/latest/status`
+- `GET /runs/{run_id}/manifest`
+- `GET /runs/{run_id}/artifact/{artifact_name}`
+
+### Backward-compatible sync endpoint
 `POST /analyze-feedback`
 
 ### Required request body
@@ -170,6 +181,7 @@ ai-product-discovery-copilot/
   "product": "Spotify",
   "research_scope": "Music Discovery",
   "research_goal": "Opportunity Discovery",
+  "country": "in",
   "analysis_time_window": {
     "type": "relative",
     "value": "12_months"
@@ -191,7 +203,7 @@ ai-product-discovery-copilot/
     "playlist cover editing",
     "pure playback bugs"
   ],
-  "max_runtime_seconds": 120,
+  "max_runtime_seconds": 1800,
   "debug": false
 }
 ```
@@ -213,25 +225,38 @@ ai-product-discovery-copilot/
 }
 ```
 
-### Success response
+### Async start response
 
 ```json
 {
   "run_id": "run_abc123",
-  "status": "completed",
-  "locked_brief": {},
-  "source_summary": [],
-  "processing_summary": {},
-  "feedback_clusters": [],
-  "metrics": {},
-  "charts_data": {},
-  "representative_quotes": [],
-  "processing_notes": [],
-  "warnings": []
+  "status": "queued",
+  "current_stage": "queued",
+  "progress_percent": 0,
+  "estimated_minutes_remaining": 30,
+  "estimated_seconds_remaining": 840,
+  "message": "Analysis run accepted and queued."
 }
 ```
 
-### Partial success response
+### Status response
+`GET /runs/{run_id}/status` returns:
+- `queued`, `running`, `completed`, `partial_success`, or `failed`
+- current stage
+- progress percent
+- conservative estimated time remaining in minutes
+- warnings if already known
+- artifact manifest when complete
+
+### Artifact rule
+The GPT should not wait on a single long-running backend response.
+Instead:
+- start the run through `POST /analyze-feedback/start`
+- optionally use a short long-poll status check such as `GET /runs/{run_id}/status?wait_seconds=35`
+- if still running, tell the user the conservative ETA
+- on later follow-up, use `GET /runs/latest/status` so the user does not need to remember the run ID
+
+### Backward-compatible sync success response
 If one source fails, do not fail the whole run.
 
 ```json
@@ -657,6 +682,7 @@ Required brief fields:
 - product
 - research_scope
 - research_goal
+- country (optional)
 - analysis_time_window
 - included_topics
 - excluded_topics
@@ -740,15 +766,28 @@ Input: user request.
 Output: locked brief.
 
 Prompt behavior:
-- Extract product, research scope, research goal, time window, included topics, excluded topics.
-- Ask user only for missing/ambiguous fields.
-- Confirm defaults.
+- Extract whatever the user already gave.
+- Infer likely values for research scope, research goal, included topics, excluded topics, research questions, and success criteria when reasonable.
+- Ask only for the minimum missing or ambiguous fields.
+- Present the full locked brief back to the user.
+- Wait for an explicit `go ahead` before calling the backend.
+- If the user changes anything, update the locked brief and confirm it again.
 
 Example clarification:
-> I can analyze Spotify's music discovery experience. To scope this properly, I will use Opportunity Discovery as the goal and last 12 months as the default time window. Should I proceed with that, and should I exclude podcasts, billing, pricing, and account issues?
+> Here is the locked brief I will use:
+> Product: Spotify
+> Scope: music discovery experience
+> Goal: opportunity discovery
+> Time window: last 6 months
+> Included topics: recommendations, music discovery, personalization
+> Excluded topics: pricing, billing, podcasts
+> Research questions: inferred and listed
+> Success criteria: inferred and listed
+>
+> Reply `go ahead` if this looks right, or tell me what to change.
 
 ### Stage 1 — Backend action call
-Call `/analyze-feedback` with locked brief.
+Call `/analyze-feedback/start` with the locked brief.
 
 ### Stage 2 — Source summary interpretation
 Summarize:

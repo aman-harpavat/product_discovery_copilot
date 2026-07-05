@@ -18,7 +18,7 @@ This architecture preserves the product strategy defined in the spec:
 User
   -> Custom GPT
       -> Clarifies and locks brief
-      -> Calls backend POST /analyze-feedback
+      -> Calls backend POST /analyze-feedback/start
           -> FastAPI app
               -> Request validation
               -> Source discovery
@@ -45,16 +45,18 @@ User
 
 ### 1.3 Runtime Flow
 1. User asks the Custom GPT to analyze Spotify's music discovery experience.
-2. Custom GPT collects and confirms the required brief fields.
+2. Custom GPT extracts the fields already present and infers the likely missing ones when reasonable.
 3. If any required brief field is missing or ambiguous, Custom GPT continues a clarification loop with the user until the full brief is locked.
-4. Custom GPT calls `POST /analyze-feedback` only after the brief is locked.
-5. Backend validates the request and creates a `run_id`.
-6. Backend generates source queries from product, scope, goal, included topics, and excluded topics.
-7. Backend collects feedback from Reddit, Google Play, and App Store.
-8. Backend normalizes all records into one raw feedback schema.
-9. Backend runs cleaning, relevance filtering, deduplication, clustering, quote selection, metrics generation, and chart-data generation.
-10. Backend returns structured evidence plus warnings, processing notes, diagnostics, and artifact URLs.
-11. Custom GPT uses only backend evidence for quantitative claims, then returns the final Markdown report directly in chat as a downloadable Markdown output.
+4. Custom GPT presents the full locked brief and waits for an explicit user go-ahead.
+5. If the user changes anything, Custom GPT updates the locked brief and confirms it again.
+6. Custom GPT calls `POST /analyze-feedback` only after the brief is locked and explicitly approved.
+7. Backend validates the request and creates a `run_id`.
+8. Backend generates source queries from product, scope, goal, included topics, and excluded topics.
+9. Backend collects feedback from Reddit, Google Play, and App Store.
+10. Backend normalizes all records into one raw feedback schema.
+11. Backend runs cleaning, relevance filtering, deduplication, clustering, quote selection, metrics generation, and chart-data generation.
+12. Backend returns structured evidence plus warnings, processing notes, diagnostics, and artifact URLs.
+13. Custom GPT uses only backend evidence for quantitative claims, then returns the final Markdown report directly in chat as a downloadable Markdown output.
 
 ### 1.4 Architectural Boundaries
 
@@ -77,7 +79,9 @@ User
 
 #### Custom GPT owns
 - Brief clarification
-- Confirming defaults with the user
+- Inferring likely brief defaults from the user prompt
+- Confirming the full locked brief with the user
+- Waiting for explicit user go-ahead before backend execution
 - PM interpretation of backend evidence
 - Segment/JTBD/need inference
 - Opportunity framing and ranking
@@ -87,7 +91,7 @@ User
 ### 1.5 Deployment Shape
 - One deployable FastAPI backend service.
 - One Custom GPT configured with:
-  - Action schema for `POST /analyze-feedback`
+  - Action schema for `POST /analyze-feedback/start` plus status/artifact endpoints
   - Instruction prompt enforcing brief-locking and evidence-based output
 - No separate frontend is required for Phase 1.
 
@@ -290,6 +294,23 @@ Expected behavior:
 - returns a healthy status payload
 - does not depend on external collectors being available
 
+#### `POST /analyze-feedback/start`
+Purpose:
+- accept a locked PM research brief
+- return a `run_id` quickly
+- start the collection and analysis pipeline asynchronously
+- return a conservative estimated time remaining in minutes so the GPT can set user expectations
+
+#### `GET /runs/{run_id}/status`
+Purpose:
+- return current run status, stage, progress, warnings, and conservative ETA in minutes
+- support short long-poll waits up to the Action-safe limit
+
+#### `GET /runs/latest/status`
+Purpose:
+- recover the most recent run without requiring the user to repeat a raw `run_id`
+- support low-friction later resume flows when a long analysis job outlives one GPT turn
+
 #### `POST /analyze-feedback`
 Purpose:
 - accept a locked PM research brief
@@ -308,7 +329,8 @@ Purpose:
 
 #### `POST /runs/{run_id}/final-report`
 Purpose:
-- save the final GPT-generated Markdown report as `final_report.md`
+- optional fallback endpoint to save the final GPT-generated Markdown report as `final_report.md`
+- not part of the normal GPT workflow, which should return the downloadable Markdown report directly in chat
 
 ### 3.2 Request Contract
 
@@ -319,6 +341,7 @@ Required body:
   "product": "Spotify",
   "research_scope": "Music Discovery",
   "research_goal": "Opportunity Discovery",
+  "country": "in",
   "analysis_time_window": {
     "type": "relative",
     "value": "12_months"
@@ -349,15 +372,17 @@ Required body:
     "Reduce repetitive listening",
     "Improve recommendation relevance and novelty balance"
   ],
-  "max_runtime_seconds": 120,
+  "max_runtime_seconds": 1800,
   "debug": false
 }
 ```
 
 Validation rules:
 - `product`, `research_scope`, `research_goal`, and `analysis_time_window` are required.
+- `country` is optional and, when provided, should be normalized to a supported 2-letter code.
 - `success_criteria` is required and must be locked by the GPT before the backend call.
 - Backend must not guess missing strategic fields.
+- Async GPT flow should use `POST /analyze-feedback/start`, not the synchronous endpoint.
 - Backend must never infer or default `success_criteria`.
 - malformed time window returns validation error.
 - empty `included_topics` or `excluded_topics` are allowed, but must generate warnings.
@@ -581,18 +606,21 @@ The Custom GPT is the primary user interface. It must not upload files manually 
 - GPT synthesizes from the compact payload first
 - GPT fetches deeper evidence artifacts only when needed
 - GPT transforms backend evidence into the PM artifact
-- GPT saves the final Markdown report back to the backend as `final_report.md`
+- GPT returns the final Markdown report directly in chat in downloadable Markdown form
 
 ### 5.2 Required GPT Behavior
 - Ask targeted clarification questions for missing or ambiguous brief fields.
+- Infer likely brief fields when reasonable so the user can start from a short natural-language request.
 - Suggest the 12-month window only as a default and ask for confirmation.
-- Do not call the backend until the brief is complete.
+- Present the full locked brief and wait for explicit `go ahead`.
+- If the user changes something, update the locked brief and confirm it again.
+- Do not call the backend until the brief is complete and explicitly approved.
 - Use backend output as the only source of quantitative evidence.
 - Disclose partial results, failed sources, and caveats.
 - Do not generate final problem statements, PRDs, MVP concepts, or roadmaps in Phase 1.
 
 ### 5.3 Action Contract
-The Custom GPT Action will point to the backend `POST /analyze-feedback` endpoint and use the OpenAPI schema generated later in the implementation sequence.
+The Custom GPT Action will point primarily to the backend `POST /analyze-feedback/start` endpoint, then use status and artifact endpoints for the rest of the flow.
 
 The action payload should mirror the locked brief exactly. The GPT should not transform strategic intent into a different product scope.
 
